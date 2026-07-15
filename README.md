@@ -25,7 +25,7 @@ conda create -n locateanything -c conda-forge python=3.11 --override-channels
 conda activate locateanything
 conda install -c conda-forge cmake make cxx-compiler --override-channels
 pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.2"
-pip install -r scripts/requirements.txt
+pip install -r requirements.txt
 ```
 
 ## Build the inference engine
