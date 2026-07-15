@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# locate-anything.cpp is a submodule; its own .gitignore covers build/models,
+# these just cover any stray top-level artifacts if scripts are run from here
+/models/
+*.gguf
+
+# editors / OS
+.DS_Store
+*:Zone.Identifier
