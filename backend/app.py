@@ -56,7 +56,9 @@ async def detect(
     if mode not in VALID_MODES:
         raise HTTPException(status_code=400, detail=f"mode must be one of {sorted(VALID_MODES)}")
     if not LA_CLI_PATH.exists():
-        raise HTTPException(status_code=500, detail=f"locate-anything-cli not found at {LA_CLI_PATH}")
+        raise HTTPException(
+            status_code=500, detail=f"locate-anything-cli not found at {LA_CLI_PATH}"
+        )
     if not LA_MODEL_PATH.exists():
         raise HTTPException(status_code=500, detail=f"model not found at {LA_MODEL_PATH}")
 
@@ -71,7 +73,9 @@ async def detect(
             with Image.open(image_path) as img:
                 width, height = img.size
         except UnidentifiedImageError as exc:
-            raise HTTPException(status_code=400, detail="uploaded file is not a valid image") from exc
+            raise HTTPException(
+                status_code=400, detail="uploaded file is not a valid image"
+            ) from exc
 
         cmd = [
             str(LA_CLI_PATH),
@@ -101,7 +105,9 @@ async def detect(
         try:
             raw = json.loads(output_path.read_text())
         except (FileNotFoundError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=500, detail="inference produced no valid output") from exc
+            raise HTTPException(
+                status_code=500, detail="inference produced no valid output"
+            ) from exc
 
     detections = [Detection(label=d["label"], box=d["box"]) for d in raw.get("detections", [])]
     for d in detections:

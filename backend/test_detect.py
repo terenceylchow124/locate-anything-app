@@ -6,10 +6,9 @@ a real model inference (single-digit to tens of seconds on CPU).
 from pathlib import Path
 
 import pytest
+from app import LA_CLI_PATH, LA_MODEL_PATH, app
 from fastapi.testclient import TestClient
 from PIL import Image
-
-from app import LA_CLI_PATH, LA_MODEL_PATH, app
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SAMPLE_IMAGE = REPO_ROOT / "locate-anything.cpp" / "benchmarks" / "media" / "bus_in.png"
