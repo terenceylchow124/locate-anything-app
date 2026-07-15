@@ -12,3 +12,9 @@ torchvision
 opencv-python-headless
 lmdb
 decord
+
+# backend service
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+httpx>=0.27
