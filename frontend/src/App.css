@@ -193,6 +193,110 @@ main {
   padding: 4px 10px;
 }
 
+.comparison-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comparison-section h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.comparison-intro {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.comparison-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comparison-hint {
+  color: var(--danger);
+  font-size: 13px;
+  margin: 0;
+}
+
+.comparison-selected-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.comparison-selected-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 6px 4px 12px;
+  font-size: 13px;
+}
+
+.comparison-selected-list button {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.comparison-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.comparison-panel {
+  flex: 1 1 260px;
+  min-width: 220px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comparison-panel h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.comparison-panel .image-stage {
+  border: none;
+}
+
+.comparison-status {
+  color: var(--text);
+  font-size: 13px;
+  margin: 0;
+}
+
+.comparison-error button {
+  margin-top: 6px;
+}
+
+.comparison-panel-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
 .license-panel {
   max-width: 900px;
   margin: 32px auto 0;

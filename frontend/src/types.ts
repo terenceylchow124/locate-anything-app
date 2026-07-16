@@ -25,3 +25,13 @@ export interface Scene {
   default_prompts: string[];
   expected_count_range: [number, number] | null;
 }
+
+// One prompt's state within a side-by-side comparison run (ticket #06).
+// "pending" = queued, not yet started; "in-flight" = its /detect call is
+// running now; others may already be "done" while this one is still
+// pending/in-flight, since the run is sequential (single-worker backend).
+export type ComparisonPanelState =
+  | { status: "pending" }
+  | { status: "in-flight"; startedAt: number }
+  | { status: "done"; result: DetectResponse }
+  | { status: "error"; message: string };
