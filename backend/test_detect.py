@@ -18,7 +18,20 @@ from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SAMPLE_IMAGE = REPO_ROOT / "locate-anything.cpp" / "benchmarks" / "media" / "bus_in.png"
-CALIBRATION_IMAGE = REPO_ROOT / "backend" / "tests" / "fixtures" / "dense_screws.jpg"
+FIXTURES_DIR = REPO_ROOT / "backend" / "tests" / "fixtures"
+
+# One entry per scene with a usable expected_count_range (ticket #05's scene
+# registry) -- night-market crowd is excluded, its count isn't verifiable by
+# eye (see backend/tests/fixtures/SOURCES.md). Screws' range was widened
+# 80-110 -> 80-125 after ticket #03's real run measured 120 (see that test's
+# docstring below for the full rationale) -- treat all these as provisional,
+# not precision claims.
+CALIBRATION_CASES = [
+    pytest.param("dense_screws.jpg", "screw", 80, 125, id="screws"),
+    pytest.param("dense_pallets.jpg", "pallet", 10, 16, id="pallets"),
+    pytest.param("dense_apples.jpg", "apple", 10, 18, id="apples"),
+    pytest.param("dense_ema_plaques.jpg", "wooden plaque", 35, 65, id="ema_plaques"),
+]
 
 pytestmark = pytest.mark.skipif(
     not (LA_LIB_PATH.exists() and LA_MODEL_PATH.exists()),
@@ -95,29 +108,27 @@ def test_detect_rejects_non_image_file():
 @pytest.mark.calibration
 @pytest.mark.skipif(
     os.environ.get("RUN_CALIBRATION") != "1",
-    reason="extremely slow (~30 tiles x ~80s/tile, 30-40+ min) -- opt in with RUN_CALIBRATION=1",
+    reason="extremely slow (30-55+ min/scene) -- opt in with RUN_CALIBRATION=1",
 )
-def test_detect_screws_count_within_calibrated_range():
-    """Known-answer regression check: dense_screws.jpg, prompt 'screw'.
-
-    Range widened to 80-125 after the first real run (2026-07-16) measured
-    120 against the original 80-110 band (manual ground truth ~95, itself an
-    uncertain eyeball estimate -- see backend/tests/fixtures/SOURCES.md).
-    Root cause not yet isolated -- candidates are (a) the 0.5 IoU merge
-    threshold being too strict for screws whose two tile-local partial views
-    don't overlap enough to register as the same object, (b) the manual
-    count under-counting a heavily-overlapping pile, or (c) mild genuine
-    over-detection by the model on this scene. Treat this range as
-    provisional/under observation, not a precision claim -- see
+@pytest.mark.parametrize("filename, prompt, low, high", CALIBRATION_CASES)
+def test_detect_count_within_calibrated_range(filename, prompt, low, high):
+    """Known-answer regression check, one per scene with a usable ground
+    truth (see CALIBRATION_CASES above and backend/tests/fixtures/SOURCES.md
+    for each scene's manual count and uncertainty rationale). The screws
+    case's range was widened 80-110 -> 80-125 after the first real run
+    (2026-07-16) measured 120 -- root cause not yet isolated (0.5 IoU merge
+    threshold too strict for partially-clipped screws vs. an under-counted
+    manual ground truth vs. mild genuine over-detection); treat all these
+    ranges as provisional/under observation, not precision claims -- see
     docs/spec-locateanything-demo.md's Tile pipeline note.
     """
-    with open(CALIBRATION_IMAGE, "rb") as f:
+    with open(FIXTURES_DIR / filename, "rb") as f:
         response = client.post(
             "/detect",
-            files={"file": ("dense_screws.jpg", f, "image/jpeg")},
-            data={"prompt": "screw"},
+            files={"file": (filename, f, "image/jpeg")},
+            data={"prompt": prompt},
         )
 
     assert response.status_code == 200
     body = response.json()
-    assert 80 <= body["count"] <= 125
+    assert low <= body["count"] <= high

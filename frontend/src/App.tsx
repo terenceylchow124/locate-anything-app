@@ -3,7 +3,9 @@ import "./App.css";
 import { detect } from "./api";
 import { ImageStage } from "./components/ImageStage";
 import { LatencyBadge } from "./components/LatencyBadge";
+import { LicensePanel } from "./components/LicensePanel";
 import { PromptChips } from "./components/PromptChips";
+import { SceneSelector } from "./components/SceneSelector";
 import { WaitIndicator } from "./components/WaitIndicator";
 import { SCENES } from "./scenes";
 import type { DetectResponse } from "./types";
@@ -14,9 +16,10 @@ type RequestState =
   | { status: "done"; result: DetectResponse }
   | { status: "error"; message: string };
 
-const scene = SCENES[0];
-
 function App() {
+  const [selectedSceneId, setSelectedSceneId] = useState(SCENES[0].id);
+  const scene = SCENES.find((s) => s.id === selectedSceneId) ?? SCENES[0];
+
   const [imageUrl, setImageUrl] = useState(scene.default_image);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [prompt, setPrompt] = useState(scene.default_prompts[0] ?? "");
@@ -30,6 +33,20 @@ function App() {
   }, []);
 
   const isPending = requestState.status === "pending";
+
+  function handleSceneSelect(id: string) {
+    const nextScene = SCENES.find((s) => s.id === id);
+    if (!nextScene) return;
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setSelectedSceneId(id);
+    setUploadedFile(null);
+    setImageUrl(nextScene.default_image);
+    setPrompt(nextScene.default_prompts[0] ?? "");
+    setRequestState({ status: "idle" });
+  }
 
   function handleFileUpload(file: File) {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
@@ -69,6 +86,13 @@ function App() {
       </header>
 
       <main>
+        <SceneSelector
+          scenes={SCENES}
+          selectedId={selectedSceneId}
+          disabled={isPending}
+          onSelect={handleSceneSelect}
+        />
+
         <ImageStage imageUrl={imageUrl} detections={detections} />
 
         <form onSubmit={handleSubmit} className="controls">
@@ -132,6 +156,8 @@ function App() {
           </div>
         )}
       </main>
+
+      <LicensePanel />
     </div>
   );
 }
