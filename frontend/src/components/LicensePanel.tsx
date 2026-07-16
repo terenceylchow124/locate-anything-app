@@ -21,7 +21,7 @@ export function LicensePanel() {
             <a href={img.url} target="_blank" rel="noreferrer">
               {img.title}
             </a>{" "}
-            -- {img.author}, {img.license}
+            -- {img.author ?? "uncredited uploader"}, {img.license}
           </li>
         ))}
       </ul>

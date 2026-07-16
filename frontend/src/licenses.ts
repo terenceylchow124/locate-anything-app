@@ -35,14 +35,14 @@ export const IMAGE_ATTRIBUTIONS = [
   {
     scene: "Orchard / crops",
     title: "'Malus Rajka' apples Capel Manor College Gardens Enfield London England.jpg",
-    author: "Wikimedia Commons contributor",
+    author: null, // SOURCES.md has no named uploader for this one -- "Credit: via Wikimedia Commons" only
     license: "CC BY-SA 4.0",
     url: "https://commons.wikimedia.org/wiki/File:%27Malus_Rajka%27_apples_Capel_Manor_College_Gardens_Enfield_London_England.jpg",
   },
   {
     scene: "Temple offerings",
     title: "Ema plaques in Japan.jpg",
-    author: "Wikimedia Commons contributor",
+    author: null, // SOURCES.md has no named uploader for this one -- "Credit: via Wikimedia Commons" only
     license: "CC BY-SA 2.0",
     url: "https://commons.wikimedia.org/wiki/File:Ema_plaques_in_Japan.jpg",
   },
