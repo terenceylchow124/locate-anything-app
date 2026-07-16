@@ -1,6 +1,7 @@
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = ["locate-anything.cpp"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
@@ -9,3 +10,9 @@ select = ["E", "F", "I", "UP", "B"]
 # FastAPI's dependency-injection style (File(...)/Form(...)/Depends(...) as
 # defaults) is idiomatic, not the mutable-default-argument bug B008 flags.
 extend-immutable-calls = ["fastapi.File", "fastapi.Form", "fastapi.Depends", "fastapi.Query"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: triggers real model inference (seconds to tens of minutes on CPU)",
+    "calibration: extremely slow known-answer regression check; opt in with RUN_CALIBRATION=1",
+]

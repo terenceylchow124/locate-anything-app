@@ -34,9 +34,11 @@ pip install -r requirements.txt
 conda activate locateanything
 git submodule update --init --recursive   # if you cloned this repo fresh
 cd locate-anything.cpp
-cmake -B build -DLA_BUILD_TESTS=ON -DLA_BUILD_CLI=ON
+cmake -B build -DLA_BUILD_TESTS=ON -DLA_BUILD_CLI=ON -DLA_SHARED=ON
 cmake --build build -j$(nproc)
 ```
+
+`-DLA_SHARED=ON` also builds `liblocate_anything.so`, which the backend loads via `ctypes` (`backend/la_capi.py`) so the model is loaded once per process instead of once per CLI invocation — see `docs/adr/0003-persistent-capi-engine-for-tiling.md`. The CLI binary is still built and useful for manual/offline debugging, but the running backend does not shell out to it.
 
 ## Get the model
 
