@@ -61,7 +61,14 @@ export function ComparisonPicker({
         </button>
       </div>
 
-      {hint && <p className="comparison-hint">{hint}</p>}
+      {/* atCap is derived/persistent (shown whenever true), unlike `hint` --
+          disabled controls can never fire the click/change that would set a
+          hint reactively, so the cap message can't be event-triggered. */}
+      {atCap ? (
+        <p className="comparison-hint">Max {MAX_COMPARISON_PROMPTS} prompts selected</p>
+      ) : (
+        hint && <p className="comparison-hint">{hint}</p>
+      )}
 
       {selected.length > 0 && (
         <ul className="comparison-selected-list">
