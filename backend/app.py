@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from la_capi import MODE_CODES, LocateAnythingEngine, LocateAnythingError
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
@@ -46,6 +47,15 @@ LA_MODEL_PATH = Path(
 VALID_MODES = set(MODE_CODES)
 
 app = FastAPI(title="LocateAnything-3B detect API")
+
+# Local portfolio demo, no auth/user data -- open CORS so the frontend (a
+# separately-served static build, see ADR 0002) can call this from any origin.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["POST"],
+    allow_headers=["*"],
+)
 
 # Guards access to the single loaded engine -- inference is effectively
 # single-worker (one CPU-bound call at a time). This is a minimal safety

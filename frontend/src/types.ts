@@ -1,0 +1,27 @@
+// Mirrors backend/app.py's Pydantic models by hand (see ADR 0002 -- no
+// shared schema/codegen is in scope for this project).
+
+export interface Detection {
+  label: string;
+  box: [number, number, number, number]; // [x1, y1, x2, y2] in image pixels
+}
+
+export interface DetectResponse {
+  detections: Detection[];
+  count: number;
+  inference_time_ms: number;
+  mode: string;
+}
+
+// Matches the scene-registry shape settled during ticket #04/#05 grilling --
+// {id, display_name, category, default_image, default_prompts[],
+// expected_count_range} -- so ticket #05 only needs to expand this data
+// file, not touch frontend code.
+export interface Scene {
+  id: string;
+  display_name: string;
+  category: string;
+  default_image: string; // path under /public
+  default_prompts: string[];
+  expected_count_range: [number, number] | null;
+}
