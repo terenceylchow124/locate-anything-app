@@ -24,6 +24,14 @@ class Tile:
     x1: int
     y1: int
 
+    @property
+    def width(self) -> int:
+        return self.x1 - self.x0
+
+    @property
+    def height(self) -> int:
+        return self.y1 - self.y0
+
 
 @dataclass
 class BoxDetection:
@@ -58,6 +66,31 @@ def _axis_starts(length: int, tile_size: int, step: int) -> list[int]:
     if starts[-1] != last_start:
         starts.append(last_start)
     return starts
+
+
+def translate_and_clamp(raw_detections: list[dict], tile: Tile) -> list[BoxDetection]:
+    """Convert a tile's raw engine output into whole-image `BoxDetection`s.
+
+    The model's box regression can slightly overshoot a tile's own crop
+    dimensions near the tile edge (observed: a few % on a tile near the true
+    object boundary) -- clamp to the crop actually fed to the model before
+    translating by the tile's origin, rather than treating natural
+    coordinate imprecision as an error.
+    """
+    detections = []
+    for d in raw_detections:
+        x1, y1, x2, y2 = d["box"]
+        x1 = max(0.0, min(x1, tile.width))
+        x2 = max(0.0, min(x2, tile.width))
+        y1 = max(0.0, min(y1, tile.height))
+        y2 = max(0.0, min(y2, tile.height))
+        detections.append(
+            BoxDetection(
+                label=d["label"],
+                box=[x1 + tile.x0, y1 + tile.y0, x2 + tile.x0, y2 + tile.y0],
+            )
+        )
+    return detections
 
 
 def iou(box_a: list[float], box_b: list[float]) -> float:

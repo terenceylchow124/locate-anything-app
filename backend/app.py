@@ -18,11 +18,17 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from la_capi import LocateAnythingEngine, LocateAnythingError
+from la_capi import MODE_CODES, LocateAnythingEngine, LocateAnythingError
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
-from tiling import DEDUP_IOU_THRESHOLD, BoxDetection, generate_tiles, merge_detections
+from tiling import (
+    DEDUP_IOU_THRESHOLD,
+    BoxDetection,
+    generate_tiles,
+    merge_detections,
+    translate_and_clamp,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LA_LIB_PATH = Path(
@@ -37,7 +43,7 @@ LA_MODEL_PATH = Path(
         REPO_ROOT / "locate-anything.cpp" / "models" / "locate-anything-q8_0.gguf",
     )
 )
-VALID_MODES = {"hybrid", "slow", "fast"}
+VALID_MODES = set(MODE_CODES)
 
 app = FastAPI(title="LocateAnything-3B detect API")
 
@@ -120,29 +126,14 @@ async def detect(
         except LocateAnythingError as exc:
             raise HTTPException(status_code=500, detail=f"inference failed: {exc}") from exc
         elapsed_ms += int((time.perf_counter() - start) * 1000)
-
-        crop_width, crop_height = tile.x1 - tile.x0, tile.y1 - tile.y0
-        for d in raw_detections:
-            x1, y1, x2, y2 = d["box"]
-            # The model's box regression can slightly overshoot the input
-            # image's own edges (observed: a few % on a tile near the true
-            # object boundary) -- clamp to the crop actually fed to the
-            # model before translating to whole-image coordinates, rather
-            # than treating natural coordinate imprecision as an error.
-            x1 = max(0.0, min(x1, crop_width))
-            x2 = max(0.0, min(x2, crop_width))
-            y1 = max(0.0, min(y1, crop_height))
-            y2 = max(0.0, min(y2, crop_height))
-            all_detections.append(
-                BoxDetection(
-                    label=d["label"],
-                    box=[x1 + tile.x0, y1 + tile.y0, x2 + tile.x0, y2 + tile.y0],
-                )
-            )
+        all_detections.extend(translate_and_clamp(raw_detections, tile))
 
     merged = merge_detections(all_detections, DEDUP_IOU_THRESHOLD)
     detections = [Detection(label=m.label, box=m.box) for m in merged]
 
+    # Should be unreachable -- every box is clamped to its tile's crop
+    # before translation, and tiles never extend past the image (see
+    # tiling.generate_tiles) -- kept as a defensive safety net.
     for d in detections:
         x1, y1, x2, y2 = d.box
         if not (0 <= x1 <= width and 0 <= x2 <= width and 0 <= y1 <= height and 0 <= y2 <= height):

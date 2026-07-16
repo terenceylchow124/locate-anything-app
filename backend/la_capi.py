@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import ctypes
 import json
-import threading
 from pathlib import Path
 
 MODE_CODES = {"hybrid": 0, "slow": 1, "fast": 2}
@@ -24,8 +23,8 @@ class LocateAnythingEngine:
     """Wraps one loaded model context (`la_ctx*`).
 
     Not safe for concurrent calls from multiple threads -- the engine
-    processes one request at a time. Callers must hold `lock` for the
-    duration of each `locate_buffer` call.
+    processes one request at a time. Serializing calls is the caller's
+    responsibility (see `backend/app.py`'s `_detect_lock`).
     """
 
     def __init__(self, lib_path: Path, model_path: Path, n_threads: int = 0) -> None:
@@ -34,7 +33,6 @@ class LocateAnythingEngine:
         self._ctx = self._lib.la_capi_load(str(model_path).encode(), n_threads)
         if not self._ctx:
             raise LocateAnythingError(f"failed to load model at {model_path}")
-        self.lock = threading.Lock()
 
     def _configure_signatures(self) -> None:
         lib = self._lib
@@ -56,7 +54,7 @@ class LocateAnythingEngine:
     def locate_buffer(self, image_bytes: bytes, prompt: str, mode: str) -> list[dict]:
         """Run detection on an in-memory encoded image (e.g. PNG bytes).
 
-        Caller must hold `self.lock` for the duration of this call.
+        Caller must serialize calls to this engine -- see class docstring.
         """
         result_ptr = self._lib.la_capi_locate_buffer(
             self._ctx,

@@ -1,12 +1,18 @@
 """Unit tests for tile geometry and cross-tile dedup -- pure functions, no
 model/CLI dependency, fast."""
 
-from tiling import BoxDetection, Tile, generate_tiles, iou, merge_detections
+from tiling import BoxDetection, Tile, generate_tiles, iou, merge_detections, translate_and_clamp
 
 
 def test_generate_tiles_small_image_returns_single_tile():
     tiles = generate_tiles(width=400, height=300, tile_size=512, step=384)
     assert tiles == [Tile(0, 0, 400, 300)]
+
+
+def test_tile_width_and_height():
+    tile = Tile(x0=300, y0=384, x1=812, y1=896)
+    assert tile.width == 512
+    assert tile.height == 512
 
 
 def test_generate_tiles_covers_whole_image_with_overlap():
@@ -79,3 +85,19 @@ def test_merge_detections_keeps_low_overlap_boxes_separate():
     ]
     merged = merge_detections(detections, iou_threshold=0.5)
     assert len(merged) == 2
+
+
+def test_translate_and_clamp_offsets_by_tile_origin():
+    tile = Tile(x0=300, y0=384, x1=812, y1=896)
+    raw = [{"label": "screw", "box": [10.0, 20.0, 30.0, 40.0]}]
+    result = translate_and_clamp(raw, tile)
+    assert result == [BoxDetection(label="screw", box=[310.0, 404.0, 330.0, 424.0])]
+
+
+def test_translate_and_clamp_clamps_overshoot_to_tile_bounds():
+    tile = Tile(x0=0, y0=0, x1=512, y1=512)
+    # y2 overshoots the 512px-tall tile -- a real overshoot observed from the
+    # model's box regression near a tile edge, not floating-point noise.
+    raw = [{"label": "person", "box": [63.3, 418.2, 187.3, 530.9]}]
+    result = translate_and_clamp(raw, tile)
+    assert result == [BoxDetection(label="person", box=[63.3, 418.2, 187.3, 512.0])]
