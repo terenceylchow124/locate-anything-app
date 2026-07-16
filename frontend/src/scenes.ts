@@ -10,6 +10,6 @@ export const SCENES: Scene[] = [
     category: "hardware",
     default_image: "/scenes/dense_screws.jpg",
     default_prompts: ["screw", "hex nut"],
-    expected_count_range: [80, 110],
+    expected_count_range: [80, 125], // widened after ticket #03's calibration run measured 120
   },
 ];
