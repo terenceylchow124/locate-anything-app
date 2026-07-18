@@ -20,12 +20,20 @@ make that debugging pass tractable.
 import io
 import json
 import re
+from typing import Any
 
 import numpy as np
 import torch
 import triton_python_backend_utils as pb_utils
 from PIL import Image
 from transformers import AutoModel, AutoProcessor, AutoTokenizer
+
+# pb_utils.InferenceRequest/InferenceResponse have no type stubs available
+# outside Triton's own runtime (this module only imports/runs inside a
+# tritonserver container) -- Any is the genuinely-unavoidable case
+# docs/CODING_STANDARDS.md's Types rule already allows for.
+InferenceRequest = Any
+InferenceResponse = Any
 
 MODEL_ID = "nvidia/LocateAnything-3B"
 BOX_TAG_RE = re.compile(r"<box><(\d+)><(\d+)><(\d+)><(\d+)></box>")
@@ -50,7 +58,7 @@ def parse_boxes(answer: str, image_width: int, image_height: int) -> list[list[f
 
 
 class TritonPythonModel:
-    def initialize(self, args):
+    def initialize(self, args: dict) -> None:
         self.device = "cuda"
         self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
         self.processor = AutoProcessor.from_pretrained(MODEL_ID, trust_remote_code=True)
@@ -61,13 +69,10 @@ class TritonPythonModel:
         ).to(self.device)
         self.model.eval()
 
-    def execute(self, requests):
-        responses = []
-        for request in requests:
-            responses.append(self._handle_one(request))
-        return responses
+    def execute(self, requests: list[InferenceRequest]) -> list[InferenceResponse]:
+        return [self._handle_one(request) for request in requests]
 
-    def _handle_one(self, request):
+    def _handle_one(self, request: InferenceRequest) -> InferenceResponse:
         image_bytes = pb_utils.get_input_tensor_by_name(request, "IMAGE").as_numpy()[0]
         prompt = pb_utils.get_input_tensor_by_name(request, "PROMPT").as_numpy()[0].decode()
         mode = pb_utils.get_input_tensor_by_name(request, "MODE").as_numpy()[0].decode()

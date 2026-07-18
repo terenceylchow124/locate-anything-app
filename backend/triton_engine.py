@@ -59,11 +59,18 @@ class TritonEngine:
         except Exception as exc:  # connection errors etc. from the http client
             raise LocateAnythingError(f"Triton request failed: {exc}") from exc
 
-        raw = result.as_numpy("DETECTIONS_JSON")[0]
-        detections_json = raw.decode() if isinstance(raw, bytes) else raw
         try:
+            raw = result.as_numpy("DETECTIONS_JSON")[0]
+            detections_json = raw.decode() if isinstance(raw, bytes) else raw
             return json.loads(detections_json)["detections"]
-        except (json.JSONDecodeError, KeyError) as exc:
+        except LocateAnythingError:
+            raise
+        except Exception as exc:
+            # Covers a missing/None DETECTIONS_JSON output (e.g. a Triton-side
+            # model bug returning a different tensor name), not just JSON
+            # decode failures -- as_numpy() returns None rather than raising
+            # when the output isn't present, so indexing it can raise
+            # TypeError, not just json.JSONDecodeError/KeyError.
             raise LocateAnythingError(
-                f"Triton returned an unexpected DETECTIONS_JSON payload: {detections_json!r}"
+                f"Triton returned an unexpected or malformed response: {exc}"
             ) from exc

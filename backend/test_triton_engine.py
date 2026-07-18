@@ -71,7 +71,7 @@ def test_locate_buffer_wraps_malformed_response_payload():
     result.as_numpy.return_value = [b"not valid json"]
     mock_client.infer.return_value = result
 
-    with pytest.raises(LocateAnythingError, match="unexpected DETECTIONS_JSON payload"):
+    with pytest.raises(LocateAnythingError, match="unexpected or malformed response"):
         engine.locate_buffer(b"bytes", "screw", "hybrid")
 
 
@@ -79,7 +79,22 @@ def test_locate_buffer_wraps_response_missing_detections_key():
     engine, mock_client = _make_engine()
     mock_client.infer.return_value = _fake_result({"not_detections": []})
 
-    with pytest.raises(LocateAnythingError, match="unexpected DETECTIONS_JSON payload"):
+    with pytest.raises(LocateAnythingError, match="unexpected or malformed response"):
+        engine.locate_buffer(b"bytes", "screw", "hybrid")
+
+
+def test_locate_buffer_wraps_missing_output_tensor():
+    # as_numpy() returns None (not an exception) when the named output isn't
+    # in the response -- e.g. a Triton-side model bug returning a
+    # differently-named tensor. Regression test for a bug the code review
+    # caught: this path used to be outside the try/except, so `None[0]`
+    # raised an unwrapped TypeError instead of LocateAnythingError.
+    engine, mock_client = _make_engine()
+    result = MagicMock()
+    result.as_numpy.return_value = None
+    mock_client.infer.return_value = result
+
+    with pytest.raises(LocateAnythingError, match="unexpected or malformed response"):
         engine.locate_buffer(b"bytes", "screw", "hybrid")
 
 
