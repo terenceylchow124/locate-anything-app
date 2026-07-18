@@ -95,6 +95,10 @@ async def run_detection(
     Runs as the single unit of work handed to `_detect_queue` -- the whole
     thing completes before the next queued request's turn starts (ticket
     #02b), not just each individual tile call.
+
+    Not HTTP-specific: lets `LocateAnythingError` propagate rather than
+    raising `HTTPException` itself -- the route handler owns that
+    translation (see `docs/CODING_STANDARDS.md`'s Structure rule).
     """
     tiles = generate_tiles(*image.size)
     all_detections: list[BoxDetection] = []
@@ -107,10 +111,7 @@ async def run_detection(
         tile_bytes = buf.getvalue()
 
         start = time.perf_counter()
-        try:
-            raw_detections = await run_in_threadpool(engine.locate_buffer, tile_bytes, prompt, mode)
-        except LocateAnythingError as exc:
-            raise HTTPException(status_code=500, detail=f"inference failed: {exc}") from exc
+        raw_detections = await run_in_threadpool(engine.locate_buffer, tile_bytes, prompt, mode)
         elapsed_ms += int((time.perf_counter() - start) * 1000)
         all_detections.extend(translate_and_clamp(raw_detections, tile))
 
@@ -150,9 +151,12 @@ async def detect(
     image = image.convert("RGB")
     width, height = image.size
 
-    (detections, elapsed_ms), queue_wait_ms = await _detect_queue.run(
-        lambda: run_detection(engine, image, prompt, mode)
-    )
+    try:
+        (detections, elapsed_ms), queue_wait_ms = await _detect_queue.run(
+            lambda: run_detection(engine, image, prompt, mode)
+        )
+    except LocateAnythingError as exc:
+        raise HTTPException(status_code=500, detail=f"inference failed: {exc}") from exc
 
     # Should be unreachable -- every box is clamped to its tile's crop
     # before translation, and tiles never extend past the image (see
