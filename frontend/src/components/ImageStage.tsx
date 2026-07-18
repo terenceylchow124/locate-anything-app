@@ -10,10 +10,11 @@ export function ImageStage({ imageUrl, detections }: Props) {
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
 
   return (
-    <div className="image-stage">
+    <div className="relative w-full overflow-hidden rounded-xl border border-border leading-none">
       <img
         src={imageUrl}
         alt="scene to detect objects in"
+        className="block h-auto w-full"
         onLoad={(e) =>
           setNaturalSize({
             width: e.currentTarget.naturalWidth,
@@ -23,7 +24,7 @@ export function ImageStage({ imageUrl, detections }: Props) {
       />
       {naturalSize && (
         <svg
-          className="detection-overlay"
+          className="absolute inset-0 h-full w-full"
           viewBox={`0 0 ${naturalSize.width} ${naturalSize.height}`}
           preserveAspectRatio="none"
         >
@@ -36,9 +37,15 @@ export function ImageStage({ imageUrl, detections }: Props) {
                   y={y1}
                   width={Math.max(0, x2 - x1)}
                   height={Math.max(0, y2 - y1)}
-                  className="detection-box"
+                  className="fill-none stroke-success stroke-[3]"
+                  vectorEffect="non-scaling-stroke"
                 />
-                <text x={x1} y={Math.max(0, y1 - 4)} className="detection-label">
+                <text
+                  x={x1}
+                  y={Math.max(0, y1 - 4)}
+                  className="fill-success stroke-bg text-base font-semibold stroke-[3px]"
+                  style={{ paintOrder: "stroke" }}
+                >
                   {d.label}
                 </text>
               </g>

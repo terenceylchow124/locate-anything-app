@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface Props {
@@ -20,8 +21,8 @@ export function WaitIndicator({ startedAt }: Props) {
   }, [startedAt]);
 
   return (
-    <div className="wait-indicator" role="status">
-      <span className="spinner" aria-hidden="true" />
+    <div className="flex items-center gap-2.5 text-sm text-text" role="status">
+      <Loader2 size={18} className="animate-spin text-accent" aria-hidden="true" />
       <span>Running on CPU, this can take a few minutes... {elapsedSeconds}s</span>
     </div>
   );

@@ -1,5 +1,5 @@
+import { Loader2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import "./App.css";
 import { detect } from "./api";
 import { ComparisonPicker } from "./components/ComparisonPicker";
 import { ComparisonResults } from "./components/ComparisonResults";
@@ -89,15 +89,17 @@ function App() {
   const detections = requestState.status === "done" ? requestState.result.detections : [];
 
   return (
-    <div className="app">
-      <header>
-        <h1>LocateAnything-3B — Interactive Counting Demo</h1>
-        <p className="subtitle">
+    <div className="mx-auto flex max-w-3xl flex-col gap-10 px-4 py-10 sm:px-6 sm:py-14">
+      <header className="flex flex-col items-center gap-3 text-center">
+        <h1 className="text-2xl tracking-tight sm:text-3xl">
+          LocateAnything-3B — Interactive Counting Demo
+        </h1>
+        <p className="max-w-md text-sm text-text sm:text-base">
           Open-vocabulary detection: type or click any target, no retraining.
         </p>
       </header>
 
-      <main>
+      <main className="flex flex-col gap-8">
         <SceneSelector
           scenes={SCENES}
           selectedId={selectedSceneId}
@@ -107,14 +109,19 @@ function App() {
 
         <ImageStage imageUrl={imageUrl} detections={detections} />
 
-        <form onSubmit={handleSubmit} className="controls">
-          <label htmlFor="upload" className="upload-button">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <label
+            htmlFor="upload"
+            className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-h transition-colors hover:border-accent hover:text-accent has-[input:disabled]:cursor-not-allowed has-[input:disabled]:opacity-50"
+          >
+            <Upload size={16} />
             Upload your own image
             <input
               id="upload"
               type="file"
               accept="image/*"
               disabled={anyBusy}
+              className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) handleFileUpload(file);
@@ -129,15 +136,21 @@ function App() {
             onSelect={setPrompt}
           />
 
-          <div className="prompt-row">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <input
               type="text"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="What should the model look for?"
               disabled={anyBusy}
+              className="min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 py-2.5 text-sm text-text-h placeholder:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
             />
-            <button type="submit" disabled={anyBusy || !prompt.trim()}>
+            <button
+              type="submit"
+              disabled={anyBusy || !prompt.trim()}
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isPending && <Loader2 size={16} className="mr-1.5 animate-spin" />}
               {isPending ? "Detecting..." : "Detect"}
             </button>
           </div>
@@ -146,13 +159,13 @@ function App() {
         {requestState.status === "pending" && <WaitIndicator startedAt={requestState.startedAt} />}
 
         {requestState.status === "error" && (
-          <p className="error" role="alert">
+          <p className="rounded-lg border border-danger px-3 py-2 text-sm text-danger" role="alert">
             {requestState.message}
           </p>
         )}
 
         {requestState.status === "done" && (
-          <div className="result-summary">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-text-h">
             {requestState.result.count === 0 ? (
               <p>No matches found for "{prompt}".</p>
             ) : (
@@ -168,9 +181,9 @@ function App() {
           </div>
         )}
 
-        <section className="comparison-section">
-          <h2>Compare prompts side by side</h2>
-          <p className="comparison-intro">
+        <section className="mt-2 flex flex-col gap-4 border-t border-border pt-8">
+          <h2 className="text-lg">Compare prompts side by side</h2>
+          <p className="text-sm text-text">
             Pick 2-3 prompts to run against the same image and see the model swap targets.
           </p>
 
@@ -190,7 +203,9 @@ function App() {
             type="button"
             onClick={comparison.run}
             disabled={anyBusy || comparison.prompts.length === 0}
+            className="inline-flex w-fit items-center justify-center whitespace-nowrap rounded-lg border border-accent px-5 py-2.5 text-sm font-medium text-accent transition-colors hover:bg-accent-bg disabled:cursor-not-allowed disabled:opacity-50"
           >
+            {comparison.isComparing && <Loader2 size={16} className="mr-1.5 animate-spin" />}
             {comparison.isComparing ? "Comparing..." : `Compare (${comparison.prompts.length})`}
           </button>
 
