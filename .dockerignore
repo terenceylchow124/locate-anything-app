@@ -1,0 +1,20 @@
+# Build context for backend/Dockerfile (context = repo root, needs both
+# backend/ and locate-anything.cpp/ source). Keep it small: exclude build
+# artifacts, model weights (volume-mounted, not baked into the image -- see
+# README), and anything frontend/dev-only.
+.git
+**/__pycache__
+**/*.pyc
+.venv/
+
+locate-anything.cpp/build/
+locate-anything.cpp/models/
+locate-anything.cpp/benchmarks/media/
+locate-anything.cpp/benchmarks/plots/
+locate-anything.cpp/benchmarks/demo/
+*.gguf
+
+frontend/node_modules/
+frontend/dist/
+
+backend/tests/fixtures/*.jpg

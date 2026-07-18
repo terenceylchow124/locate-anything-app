@@ -1,0 +1,9 @@
+# Runtime deps for the backend service only (not the full dev environment's
+# requirements.txt at the repo root, which also covers locate-anything.cpp's
+# own Python scripts for model conversion/testing -- torch/transformers/etc.
+# are not needed to serve /detect, which talks to the model via the compiled
+# liblocate_anything.so, not Python).
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+Pillow>=10.0

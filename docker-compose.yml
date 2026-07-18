@@ -1,0 +1,21 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      # Model weights are not baked into the image (~6.3GB GGUF) -- mount the
+      # host's already-downloaded models/ dir read-only. See README's "Get
+      # the model" step; it must be run before `docker compose up`.
+      - ./locate-anything.cpp/models:/app/locate-anything.cpp/models:ro
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
