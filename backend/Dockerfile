@@ -33,7 +33,7 @@ COPY --from=builder /src/locate-anything.cpp/build/liblocate_anything.so \
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-COPY backend/*.py ./backend/
+COPY backend/app.py backend/tiling.py backend/la_capi.py ./backend/
 
 # Model weights are volume-mounted at run time, not baked into the image
 # (see docker-compose.yml + README) -- the GGUF is ~6.3GB and shouldn't be
