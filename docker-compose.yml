@@ -5,10 +5,20 @@ services:
       dockerfile: backend/Dockerfile
     ports:
       - "8000:8000"
+    environment:
+      # "local" (default) uses the CPU engine below, unchanged; "triton"
+      # talks to a remote Triton Inference Server on a GPU box instead (see
+      # triton/README.md and docs/adr/0005-pluggable-inference-backend-local-or-triton.md).
+      # Set these in a .env file or the shell before `docker compose up` --
+      # unset, behavior is identical to before this existed.
+      - LA_INFERENCE_BACKEND=${LA_INFERENCE_BACKEND:-local}
+      - LA_TRITON_URL=${LA_TRITON_URL:-localhost:8000}
+      - LA_TRITON_MODEL_NAME=${LA_TRITON_MODEL_NAME:-locate_anything}
     volumes:
       # Model weights are not baked into the image (~6.3GB GGUF) -- mount the
       # host's already-downloaded models/ dir read-only. See README's "Get
-      # the model" step; it must be run before `docker compose up`.
+      # the model" step; it must be run before `docker compose up`. Only
+      # relevant for LA_INFERENCE_BACKEND=local -- harmless if unused.
       - ./locate-anything.cpp/models:/app/locate-anything.cpp/models:ro
 
   frontend:

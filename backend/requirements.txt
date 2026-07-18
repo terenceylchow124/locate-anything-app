@@ -7,3 +7,8 @@ fastapi>=0.110
 uvicorn[standard]>=0.29
 python-multipart>=0.0.9
 Pillow>=10.0
+
+# LA_INFERENCE_BACKEND=triton support (backend/triton_engine.py) -- talks to
+# a remote Triton Inference Server, no local GPU/CUDA needed on this side.
+tritonclient[http]>=2.40
+numpy>=1.26

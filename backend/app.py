@@ -16,6 +16,7 @@ import threading
 import time
 from pathlib import Path
 
+from engine import InferenceEngine
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from la_capi import MODE_CODES, LocateAnythingEngine, LocateAnythingError
@@ -30,6 +31,7 @@ from tiling import (
     merge_detections,
     translate_and_clamp,
 )
+from triton_engine import TritonEngine
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LA_LIB_PATH = Path(
@@ -46,6 +48,13 @@ LA_MODEL_PATH = Path(
 )
 VALID_MODES = set(MODE_CODES)
 
+# Which InferenceEngine to construct: "local" (default, locate-anything.cpp
+# via ctypes, la_capi.py) or "triton" (remote Triton Inference Server on a
+# GPU box, triton_engine.py) -- see docs/adr/0005-pluggable-inference-backend-local-or-triton.md.
+LA_INFERENCE_BACKEND = os.environ.get("LA_INFERENCE_BACKEND", "local")
+LA_TRITON_URL = os.environ.get("LA_TRITON_URL", "localhost:8000")
+LA_TRITON_MODEL_NAME = os.environ.get("LA_TRITON_MODEL_NAME", "locate_anything")
+
 app = FastAPI(title="LocateAnything-3B detect API")
 
 # Local portfolio demo, no auth/user data -- open CORS so the frontend (a
@@ -61,7 +70,7 @@ app.add_middleware(
 # the single loaded engine, and reports how long a queued request waited for
 # its turn -- see ticket #02b and backend/queueing.py.
 _detect_queue = SingleWorkerQueue()
-_engine: LocateAnythingEngine | None = None
+_engine: InferenceEngine | None = None
 _engine_init_lock = threading.Lock()
 
 
@@ -78,17 +87,20 @@ class DetectResponse(BaseModel):
     queue_wait_ms: int
 
 
-def get_engine() -> LocateAnythingEngine:
+def get_engine() -> InferenceEngine:
     global _engine
     if _engine is None:
         with _engine_init_lock:
             if _engine is None:
-                _engine = LocateAnythingEngine(LA_LIB_PATH, LA_MODEL_PATH)
+                if LA_INFERENCE_BACKEND == "triton":
+                    _engine = TritonEngine(LA_TRITON_URL, LA_TRITON_MODEL_NAME)
+                else:
+                    _engine = LocateAnythingEngine(LA_LIB_PATH, LA_MODEL_PATH)
     return _engine
 
 
 async def run_detection(
-    engine: LocateAnythingEngine, image: Image.Image, prompt: str, mode: str
+    engine: InferenceEngine, image: Image.Image, prompt: str, mode: str
 ) -> tuple[list[Detection], int]:
     """Tile the image, run each tile through the engine, merge results.
 
@@ -130,12 +142,13 @@ async def detect(
         raise HTTPException(status_code=400, detail="prompt must not be empty")
     if mode not in VALID_MODES:
         raise HTTPException(status_code=400, detail=f"mode must be one of {sorted(VALID_MODES)}")
-    if not LA_LIB_PATH.exists():
-        raise HTTPException(
-            status_code=500, detail=f"liblocate_anything not found at {LA_LIB_PATH}"
-        )
-    if not LA_MODEL_PATH.exists():
-        raise HTTPException(status_code=500, detail=f"model not found at {LA_MODEL_PATH}")
+    if LA_INFERENCE_BACKEND == "local":
+        if not LA_LIB_PATH.exists():
+            raise HTTPException(
+                status_code=500, detail=f"liblocate_anything not found at {LA_LIB_PATH}"
+            )
+        if not LA_MODEL_PATH.exists():
+            raise HTTPException(status_code=500, detail=f"model not found at {LA_MODEL_PATH}")
 
     try:
         engine = get_engine()

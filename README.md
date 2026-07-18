@@ -35,6 +35,17 @@ The backend image compiles `locate-anything.cpp` from source at build time with 
 
 We deliberately dropped an earlier plan to reuse a third-party prebuilt Docker app (`gammahazard/locate-anything`) — it's CUDA-only with no CPU path and offered no way to customize sample scenes or license text. Both backend and frontend here are ours.
 
+## Inference backend: local CPU or remote Triton (GPU)
+
+By default the backend runs inference locally via the CPU engine above (`LA_INFERENCE_BACKEND=local`, the default). It can instead call a remote **Triton Inference Server** serving the original NVIDIA `LocateAnything-3B` PyTorch checkpoint on a GPU box:
+
+```sh
+export LA_INFERENCE_BACKEND=triton
+export LA_TRITON_URL=<gpu-server-address>:8000
+```
+
+(or the equivalent env vars in `docker-compose.yml` / a `.env` file). See `triton/README.md` for building and running the Triton server itself (written for an NVIDIA DGX Spark, but not DGX-Spark-specific beyond the ARM64/Blackwell build notes), and `docs/adr/0005-pluggable-inference-backend-local-or-triton.md` for the design rationale. The two backends are interchangeable from the frontend's point of view — same `/detect` contract either way.
+
 ## Development environment
 
 A dedicated conda environment (`locateanything`, Python 3.11, via **conda-forge** — not Anaconda's default channels, which require ToS acceptance) holds everything needed to build the engine and run its Python-side scripts (model download/conversion). No CUDA build of PyTorch is installed; this project is CPU-only end to end.

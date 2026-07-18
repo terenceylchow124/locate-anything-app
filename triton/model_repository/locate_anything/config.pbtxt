@@ -1,0 +1,49 @@
+# Triton Python-backend config for nvidia/LocateAnything-3B (GPU).
+# See ../../1/model.py for the actual model-loading/inference logic and
+# ../../README.md for build/deploy steps.
+#
+# Contract: this must match what backend/triton_engine.py (in the main repo)
+# sends and expects back -- IMAGE/PROMPT/MODE in, DETECTIONS_JSON out, same
+# {"detections": [{"label", "box"}]} shape the local CPU engine returns.
+
+name: "locate_anything"
+backend: "python"
+
+# No dynamic batching: the client (this project's backend) already
+# serializes all /detect calls through a single-worker queue (see ticket
+# #02b), and batching variable-sized tile images adds complexity for no
+# throughput benefit here.
+max_batch_size: 0
+
+input [
+  {
+    name: "IMAGE"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "PROMPT"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "MODE"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  }
+]
+
+output [
+  {
+    name: "DETECTIONS_JSON"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  }
+]
+
+instance_group [
+  {
+    kind: KIND_GPU
+    count: 1
+  }
+]

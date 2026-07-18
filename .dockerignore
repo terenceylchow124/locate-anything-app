@@ -19,3 +19,7 @@ frontend/dist/
 
 backend/tests/fixtures/*.jpg
 backend/test_*.py
+
+# GPU-server-side Triton deployment -- built/run separately (see
+# triton/README.md), not part of this project's own Docker Compose build.
+triton/
