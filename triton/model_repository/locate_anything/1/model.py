@@ -62,6 +62,12 @@ class TritonPythonModel:
         self.device = "cuda"
         self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
         self.processor = AutoProcessor.from_pretrained(MODEL_ID, trust_remote_code=True)
+        # NOTE (known risk, see module docstring): the model card's own
+        # LocateAnythingWorker reference impl loads via AutoModel, not
+        # AutoModelForCausalLM -- trusting that since it's the more specific
+        # source (vs. a generic third-party usage example that used
+        # AutoModelForCausalLM instead). If `.generate()` below raises
+        # AttributeError, this is the first thing to try swapping.
         self.model = AutoModel.from_pretrained(
             MODEL_ID,
             torch_dtype=torch.bfloat16,
@@ -94,7 +100,14 @@ class TritonPythonModel:
         text = self.processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-        inputs = self.processor(text=[text], images=[image], return_tensors="pt").to(self.device)
+        # Matches the model card's documented input-prep exactly (rather
+        # than passing `images=[image]` directly) -- process_vision_info
+        # may do model-specific preprocessing (resizing, tiling, etc.) that
+        # this wrapper shouldn't try to replicate by hand.
+        images, videos = self.processor.process_vision_info(messages)
+        inputs = self.processor(text=[text], images=images, videos=videos, return_tensors="pt").to(
+            self.device
+        )
 
         with torch.no_grad():
             output_ids = self.model.generate(

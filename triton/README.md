@@ -19,24 +19,19 @@ Check the `TRITON_TAG` build arg in `Dockerfile` first — verify it's still a v
 docker build -t locate-anything-triton --build-arg TRITON_TAG=<newer-tag> .
 ```
 
-## 2. Download the model weights
+## 2. (Optional) Pre-download the model weights
 
-On the DGX Spark, into a directory that'll be mounted as the Triton model repository:
+`model.py`'s `from_pretrained()` calls will download the weights automatically the first time the model loads inside the container — so this step isn't strictly required. Worth doing anyway to avoid the first `/detect` request also paying multi-GB download time, and to pin a specific revision if you want reproducibility:
 
 ```sh
 pip install huggingface_hub
-mkdir -p model_repository/locate_anything/1
-# model.py already lives in model_repository/locate_anything/1/ -- the
-# HF download below is a separate concern: model.py itself downloads the
-# model weights on first load via from_pretrained(), so no manual weight
-# download step is actually required here. This step is only needed if you
-# want to pre-warm the HF cache (avoids the first inference request paying
-# the download time) or pin a specific revision -- e.g.:
 python3 -c "
 from huggingface_hub import snapshot_download
 snapshot_download(repo_id='nvidia/LocateAnything-3B')
 "
 ```
+
+This populates `~/.cache/huggingface` (the default HF cache location), which step 3 below mounts into the container.
 
 ## 3. Run the server
 
