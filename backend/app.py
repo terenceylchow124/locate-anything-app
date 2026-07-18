@@ -10,7 +10,6 @@ detections out.
 
 from __future__ import annotations
 
-import asyncio
 import io
 import os
 import threading
@@ -22,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from la_capi import MODE_CODES, LocateAnythingEngine, LocateAnythingError
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
+from queueing import SingleWorkerQueue
 from starlette.concurrency import run_in_threadpool
 from tiling import (
     DEDUP_IOU_THRESHOLD,
@@ -57,10 +57,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Guards access to the single loaded engine -- inference is effectively
-# single-worker (one CPU-bound call at a time). This is a minimal safety
-# gate, not the full queue/wait-state UX; see ticket #02b for that.
-_detect_lock = asyncio.Lock()
+# Serializes whole /detect requests (not just individual tile calls) through
+# the single loaded engine, and reports how long a queued request waited for
+# its turn -- see ticket #02b and backend/queueing.py.
+_detect_queue = SingleWorkerQueue()
 _engine: LocateAnythingEngine | None = None
 _engine_init_lock = threading.Lock()
 
@@ -75,6 +75,7 @@ class DetectResponse(BaseModel):
     count: int
     inference_time_ms: int
     mode: str
+    queue_wait_ms: int
 
 
 def get_engine() -> LocateAnythingEngine:
@@ -84,6 +85,38 @@ def get_engine() -> LocateAnythingEngine:
             if _engine is None:
                 _engine = LocateAnythingEngine(LA_LIB_PATH, LA_MODEL_PATH)
     return _engine
+
+
+async def run_detection(
+    engine: LocateAnythingEngine, image: Image.Image, prompt: str, mode: str
+) -> tuple[list[Detection], int]:
+    """Tile the image, run each tile through the engine, merge results.
+
+    Runs as the single unit of work handed to `_detect_queue` -- the whole
+    thing completes before the next queued request's turn starts (ticket
+    #02b), not just each individual tile call.
+    """
+    tiles = generate_tiles(*image.size)
+    all_detections: list[BoxDetection] = []
+    elapsed_ms = 0
+
+    for tile in tiles:
+        crop = image.crop((tile.x0, tile.y0, tile.x1, tile.y1))
+        buf = io.BytesIO()
+        crop.save(buf, format="PNG")
+        tile_bytes = buf.getvalue()
+
+        start = time.perf_counter()
+        try:
+            raw_detections = await run_in_threadpool(engine.locate_buffer, tile_bytes, prompt, mode)
+        except LocateAnythingError as exc:
+            raise HTTPException(status_code=500, detail=f"inference failed: {exc}") from exc
+        elapsed_ms += int((time.perf_counter() - start) * 1000)
+        all_detections.extend(translate_and_clamp(raw_detections, tile))
+
+    merged = merge_detections(all_detections, DEDUP_IOU_THRESHOLD)
+    detections = [Detection(label=m.label, box=m.box) for m in merged]
+    return detections, elapsed_ms
 
 
 @app.post("/detect", response_model=DetectResponse)
@@ -117,29 +150,9 @@ async def detect(
     image = image.convert("RGB")
     width, height = image.size
 
-    tiles = generate_tiles(width, height)
-    all_detections: list[BoxDetection] = []
-    elapsed_ms = 0
-
-    for tile in tiles:
-        crop = image.crop((tile.x0, tile.y0, tile.x1, tile.y1))
-        buf = io.BytesIO()
-        crop.save(buf, format="PNG")
-        tile_bytes = buf.getvalue()
-
-        start = time.perf_counter()
-        try:
-            async with _detect_lock:
-                raw_detections = await run_in_threadpool(
-                    engine.locate_buffer, tile_bytes, prompt, mode
-                )
-        except LocateAnythingError as exc:
-            raise HTTPException(status_code=500, detail=f"inference failed: {exc}") from exc
-        elapsed_ms += int((time.perf_counter() - start) * 1000)
-        all_detections.extend(translate_and_clamp(raw_detections, tile))
-
-    merged = merge_detections(all_detections, DEDUP_IOU_THRESHOLD)
-    detections = [Detection(label=m.label, box=m.box) for m in merged]
+    (detections, elapsed_ms), queue_wait_ms = await _detect_queue.run(
+        lambda: run_detection(engine, image, prompt, mode)
+    )
 
     # Should be unreachable -- every box is clamped to its tile's crop
     # before translation, and tiles never extend past the image (see
@@ -157,4 +170,5 @@ async def detect(
         count=len(detections),
         inference_time_ms=elapsed_ms,
         mode=mode,
+        queue_wait_ms=queue_wait_ms,
     )

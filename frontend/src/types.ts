@@ -11,6 +11,10 @@ export interface DetectResponse {
   count: number;
   inference_time_ms: number;
   mode: string;
+  // How long this request waited in the single-worker queue before its own
+  // processing started (ticket #02b) -- ~0 when uncontended. Not currently
+  // surfaced in the UI, just available on the response.
+  queue_wait_ms: number;
 }
 
 // Matches the scene-registry shape settled during ticket #04/#05 grilling --

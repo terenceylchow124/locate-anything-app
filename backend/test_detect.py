@@ -57,10 +57,12 @@ def test_detect_returns_valid_contract_shape():
     assert "count" in body
     assert "inference_time_ms" in body
     assert "mode" in body
+    assert "queue_wait_ms" in body
 
     assert body["count"] == len(body["detections"])
     assert body["mode"] == "hybrid"
     assert body["inference_time_ms"] > 0
+    assert body["queue_wait_ms"] >= 0
 
     with Image.open(SAMPLE_IMAGE) as img:
         width, height = img.size
