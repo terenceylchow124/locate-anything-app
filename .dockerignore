@@ -18,3 +18,4 @@ frontend/node_modules/
 frontend/dist/
 
 backend/tests/fixtures/*.jpg
+backend/test_*.py
