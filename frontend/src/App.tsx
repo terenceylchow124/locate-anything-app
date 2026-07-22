@@ -1,23 +1,12 @@
-import { Loader2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { detect } from "./api";
-import { ComparisonPicker } from "./components/ComparisonPicker";
-import { ComparisonResults } from "./components/ComparisonResults";
 import { ImageStage } from "./components/ImageStage";
-import { LatencyBadge } from "./components/LatencyBadge";
-import { LicensePanel } from "./components/LicensePanel";
-import { PromptChips } from "./components/PromptChips";
-import { SceneSelector } from "./components/SceneSelector";
-import { WaitIndicator } from "./components/WaitIndicator";
+import { OverlayView } from "./components/OverlayView";
+import { ResultGrid } from "./components/ResultGrid";
+import { Sidebar } from "./components/Sidebar";
 import { useComparison } from "./hooks/useComparison";
+import { collectRows, downloadCSV, downloadJSON } from "./lib/export";
+import { colorForPrompt } from "./lib/palette";
 import { SCENES } from "./scenes";
-import type { DetectResponse } from "./types";
-
-type RequestState =
-  | { status: "idle" }
-  | { status: "pending"; startedAt: number }
-  | { status: "done"; result: DetectResponse }
-  | { status: "error"; message: string };
 
 function App() {
   const [selectedSceneId, setSelectedSceneId] = useState(SCENES[0].id);
@@ -25,9 +14,9 @@ function App() {
 
   const [imageUrl, setImageUrl] = useState(scene.default_image);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [prompt, setPrompt] = useState(scene.default_prompts[0] ?? "");
-  const [requestState, setRequestState] = useState<RequestState>({ status: "idle" });
   const objectUrlRef = useRef<string | null>(null);
+
+  const [overlay, setOverlay] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -35,14 +24,17 @@ function App() {
     };
   }, []);
 
-  const isPending = requestState.status === "pending";
-
   async function resolveImageBlob(): Promise<Blob> {
     return uploadedFile ?? (await (await fetch(imageUrl)).blob());
   }
 
-  const comparison = useComparison(resolveImageBlob, isPending);
-  const anyBusy = isPending || comparison.isComparing;
+  const comparison = useComparison(resolveImageBlob, false);
+  const prompts = comparison.prompts;
+  const colorFor = (p: string) => colorForPrompt(prompts, p);
+
+  const busy = comparison.isComparing;
+  const hasResults = Object.keys(comparison.results).length > 0;
+  const started = busy || hasResults;
 
   function handleSceneSelect(id: string) {
     const nextScene = SCENES.find((s) => s.id === id);
@@ -54,8 +46,6 @@ function App() {
     setSelectedSceneId(id);
     setUploadedFile(null);
     setImageUrl(nextScene.default_image);
-    setPrompt(nextScene.default_prompts[0] ?? "");
-    setRequestState({ status: "idle" });
     comparison.resetSelection();
   }
 
@@ -65,163 +55,79 @@ function App() {
     objectUrlRef.current = url;
     setUploadedFile(file);
     setImageUrl(url);
-    setRequestState({ status: "idle" });
     comparison.clearResults();
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!prompt.trim() || anyBusy) return;
-
-    setRequestState({ status: "pending", startedAt: Date.now() });
-    try {
-      const imageBlob = await resolveImageBlob();
-      const result = await detect(imageBlob, prompt);
-      setRequestState({ status: "done", result });
-    } catch (err) {
-      setRequestState({
-        status: "error",
-        message: err instanceof Error ? err.message : "detection failed",
-      });
-    }
+  function handleRun() {
+    if (busy || prompts.length === 0) return;
+    comparison.run();
   }
 
-  const detections = requestState.status === "done" ? requestState.result.detections : [];
+  function handleExport(kind: "json" | "csv") {
+    const rows = collectRows(prompts, comparison.results);
+    if (rows.length === 0) return;
+    const base = (selectedSceneId || "detections").replace(/[^a-z0-9-_]+/gi, "_");
+    if (kind === "json") downloadJSON(rows, `${base}.json`);
+    else downloadCSV(rows, `${base}.csv`);
+  }
+
+  const exportDisabled = collectRows(prompts, comparison.results).length === 0;
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-10 px-4 py-10 sm:px-6 sm:py-14">
-      <header className="flex flex-col items-center gap-3 text-center">
-        <h1 className="text-2xl tracking-tight sm:text-3xl">
-          LocateAnything-3B — Interactive Counting Demo
-        </h1>
-        <p className="max-w-md text-sm text-text sm:text-base">
-          Open-vocabulary detection: type or click any target, no retraining.
-        </p>
-      </header>
+    <div className="flex h-screen w-full overflow-hidden">
+      <Sidebar
+        scenes={SCENES}
+        selectedSceneId={selectedSceneId}
+        onSelectScene={handleSceneSelect}
+        onUpload={handleFileUpload}
+        disabled={busy}
+        availablePrompts={scene.default_prompts}
+        selected={prompts}
+        freeText={comparison.freeText}
+        hint={comparison.hint}
+        colorFor={colorFor}
+        onToggleChip={comparison.toggleChip}
+        onFreeTextChange={comparison.setFreeText}
+        onAddFreeText={comparison.addFreeText}
+        onRemove={comparison.remove}
+        runLabel={`Detect (${prompts.length})`}
+        runBusy={busy}
+        onRun={handleRun}
+        overlay={overlay}
+        onToggleOverlay={() => setOverlay((v) => !v)}
+        onExportJSON={() => handleExport("json")}
+        onExportCSV={() => handleExport("csv")}
+        exportDisabled={exportDisabled}
+      />
 
-      <main className="flex flex-col gap-8">
-        <SceneSelector
-          scenes={SCENES}
-          selectedId={selectedSceneId}
-          disabled={anyBusy}
-          onSelect={handleSceneSelect}
-        />
-
-        <ImageStage imageUrl={imageUrl} detections={detections} />
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <label
-            htmlFor="upload"
-            className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-h transition-colors hover:border-accent hover:text-accent has-[input:disabled]:cursor-not-allowed has-[input:disabled]:opacity-50"
-          >
-            <Upload size={16} />
-            Upload your own image
-            <input
-              id="upload"
-              type="file"
-              accept="image/*"
-              disabled={anyBusy}
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFileUpload(file);
-              }}
-            />
-          </label>
-
-          <PromptChips
-            prompts={scene.default_prompts}
-            activePrompt={prompt}
-            disabled={anyBusy}
-            onSelect={setPrompt}
+      <main className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden bg-bg p-4">
+        {!started ? (
+          <>
+            <div className="min-h-0 flex-1">
+              <ImageStage imageUrl={imageUrl} detections={[]} />
+            </div>
+            <p className="shrink-0 text-sm text-text">
+              Add prompts in the sidebar and run detection to see results here.
+            </p>
+          </>
+        ) : overlay ? (
+          <OverlayView
+            imageUrl={imageUrl}
+            prompts={prompts}
+            results={comparison.results}
+            colorFor={colorFor}
           />
-
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              type="text"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="What should the model look for?"
-              disabled={anyBusy}
-              className="min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 py-2.5 text-sm text-text-h placeholder:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
-            />
-            <button
-              type="submit"
-              disabled={anyBusy || !prompt.trim()}
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isPending && <Loader2 size={16} className="mr-1.5 animate-spin" />}
-              {isPending ? "Detecting..." : "Detect"}
-            </button>
-          </div>
-        </form>
-
-        {requestState.status === "pending" && <WaitIndicator startedAt={requestState.startedAt} />}
-
-        {requestState.status === "error" && (
-          <p className="rounded-lg border border-danger px-3 py-2 text-sm text-danger" role="alert">
-            {requestState.message}
-          </p>
-        )}
-
-        {requestState.status === "done" && (
-          <div className="flex flex-wrap items-center gap-3 text-sm text-text-h">
-            {requestState.result.count === 0 ? (
-              <p>No matches found for "{prompt}".</p>
-            ) : (
-              <p>
-                Found <strong>{requestState.result.count}</strong> match
-                {requestState.result.count === 1 ? "" : "es"} for "{prompt}"
-              </p>
-            )}
-            <LatencyBadge
-              inferenceTimeMs={requestState.result.inference_time_ms}
-              mode={requestState.result.mode}
-            />
-          </div>
-        )}
-
-        <section className="mt-2 flex flex-col gap-4 border-t border-border pt-8">
-          <h2 className="text-lg">Compare prompts side by side</h2>
-          <p className="text-sm text-text">
-            Pick 2-3 prompts to run against the same image and see the model swap targets.
-          </p>
-
-          <ComparisonPicker
-            availablePrompts={scene.default_prompts}
-            selected={comparison.prompts}
-            freeText={comparison.freeText}
-            hint={comparison.hint}
-            disabled={anyBusy}
-            onToggleChip={comparison.toggleChip}
-            onFreeTextChange={comparison.setFreeText}
-            onAddFreeText={comparison.addFreeText}
-            onRemove={comparison.remove}
+        ) : (
+          <ResultGrid
+            imageUrl={imageUrl}
+            prompts={prompts}
+            results={comparison.results}
+            colorFor={colorFor}
+            onRetry={comparison.retry}
+            retryDisabled={busy}
           />
-
-          <button
-            type="button"
-            onClick={comparison.run}
-            disabled={anyBusy || comparison.prompts.length === 0}
-            className="inline-flex w-fit items-center justify-center whitespace-nowrap rounded-lg border border-accent px-5 py-2.5 text-sm font-medium text-accent transition-colors hover:bg-accent-bg disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {comparison.isComparing && <Loader2 size={16} className="mr-1.5 animate-spin" />}
-            {comparison.isComparing ? "Comparing..." : `Compare (${comparison.prompts.length})`}
-          </button>
-
-          {comparison.prompts.length > 0 && Object.keys(comparison.results).length > 0 && (
-            <ComparisonResults
-              imageUrl={imageUrl}
-              prompts={comparison.prompts}
-              results={comparison.results}
-              onRetry={comparison.retry}
-              retryDisabled={anyBusy}
-            />
-          )}
-        </section>
+        )}
       </main>
-
-      <LicensePanel />
     </div>
   );
 }
