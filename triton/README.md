@@ -4,7 +4,7 @@ Serves the original NVIDIA `LocateAnything-3B` PyTorch checkpoint on the GPU, as
 
 **License reminder**: `nvidia/LocateAnything-3B` is non-commercial research use only, same as the rest of this project (see the main repo's README).
 
-**Known risk**: `model_repository/locate_anything/1/model.py`'s prompt template, `<box>` tag parsing, and `generation_mode` handling are based on the model card's documented examples, not a live run against real weights on real hardware. Expect the first run to need small adjustments once you can see actual output — the model logs the raw generated text when zero boxes parse, specifically to make that debugging pass tractable.
+**Verified on hardware** (DGX Spark, GB10/Blackwell): the prompt template and `<box>` tag parsing match the model's real output as-is. What the first live run did require was fixing `model.py`'s `generate()` call — the model ships a *custom* MTP/AR `generate()` (not HF's `GenerationMixin.generate`): it needs `use_cache=True` + `tokenizer=`, takes explicit `pixel_values`/`input_ids`/... args, and returns the decoded answer string directly (not a token-id tensor). The `Dockerfile` also had to gain the model's runtime deps (`peft`, `torchvision`, `opencv-python-headless`, `lmdb`, `requests`; `transformers<5`; `numpy<2`; and a `decord` import stub, since `decord` has no aarch64 wheel). If a future model revision returns zero boxes, `model.py` still logs the raw generated text to make that debugging pass tractable.
 
 ## 1. Build the image
 
