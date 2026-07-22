@@ -1,0 +1,22 @@
+# Lean backend for LA_INFERENCE_BACKEND=triton. Unlike backend/Dockerfile
+# (local mode), this does NOT compile liblocate_anything.so -- in triton mode
+# the backend only tiles images and forwards each tile to the Triton server, so
+# it needs none of the local CPU engine, torch, or decord (decord has no
+# aarch64 wheel). That also means no git-submodule / C++ build is required.
+FROM python:3.11-slim
+
+WORKDIR /app
+RUN pip install --no-cache-dir \
+    "fastapi>=0.110" \
+    "uvicorn[standard]>=0.29" \
+    "python-multipart>=0.0.9" \
+    "httpx>=0.27" \
+    "pillow>=10.0" \
+    "numpy>=1.26" \
+    "tritonclient[http]>=2.40"
+
+COPY backend/*.py ./backend/
+
+WORKDIR /app/backend
+EXPOSE 8000
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,65 @@
+# One-command GPU stack: Triton serving nvidia/LocateAnything-3B on the GB10,
+# plus the FastAPI backend (triton mode -- it tiles images and forwards each
+# tile to Triton) and the frontend (nginx reverse-proxies /detect to backend).
+#
+#   docker compose -f docker-compose.triton.yml up --build
+#
+# Then open http://<this-host>:5173 . The plain CPU-local stack
+# (docker-compose.yml) is left untouched.
+#
+# Prereqs:
+#   - LocateAnything-3B weights already downloaded to ~/.cache/huggingface
+#     (see triton/README.md "Download the model"). Mounted below, not baked in.
+#   - .env with HF_TOKEN (gitignored) -- passed through to Triton.
+
+services:
+  triton:
+    build: ./triton
+    ports:
+      - "8000:8000"   # HTTP  (backend calls this)
+      - "8001:8001"   # gRPC
+      - "8002:8002"   # metrics
+    volumes:
+      # model_repository is bind-mounted (model.py is hot-editable without a
+      # rebuild -- restart the container to pick up changes).
+      - ./triton/model_repository:/models
+      # Read-write: transformers also writes the trust_remote_code modules to
+      # ~/.cache/huggingface/modules on first load.
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+    # PyTorch VLM + the MTP/AR generation loop want a big shared-memory + IPC
+    # segment; ipc=host mirrors what the standalone `docker run` uses.
+    ipc: host
+    shm_size: 8g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # First model load is slow (full bf16 weights, no quantization).
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.triton
+    ports:
+      - "8080:8000"   # direct backend access (e.g. /docs); frontend proxies too
+    environment:
+      - LA_INFERENCE_BACKEND=triton
+      # Inside the compose network the backend reaches Triton by service name,
+      # not localhost:8000 (that would be the backend container itself).
+      - LA_TRITON_URL=triton:8000
+      - LA_TRITON_MODEL_NAME=locate_anything
+    depends_on:
+      - triton
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
