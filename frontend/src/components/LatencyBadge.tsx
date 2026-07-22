@@ -9,7 +9,7 @@ export function LatencyBadge({ inferenceTimeMs, mode }: Props) {
   const seconds = (inferenceTimeMs / 1000).toFixed(1);
   return (
     <span className="inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs text-text">
-      {seconds}s · {mode} · CPU · no GPU
+      {seconds}s · {mode}
     </span>
   );
 }

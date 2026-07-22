@@ -23,7 +23,7 @@ export function WaitIndicator({ startedAt }: Props) {
   return (
     <div className="flex items-center gap-2.5 text-sm text-text" role="status">
       <Loader2 size={18} className="animate-spin text-accent" aria-hidden="true" />
-      <span>Running on CPU, this can take a few minutes... {elapsedSeconds}s</span>
+      <span>Detecting... this can take a while {elapsedSeconds}s</span>
     </div>
   );
 }
