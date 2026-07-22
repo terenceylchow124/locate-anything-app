@@ -32,7 +32,13 @@ class TritonEngine:
     def __init__(self, url: str, model_name: str) -> None:
         self._model_name = model_name
         try:
-            self._client = httpclient.InferenceServerClient(url=url)
+            # Default 60s is too tight: a Blackwell (GB10) first call pays CUDA
+            # kernel JIT compilation, and dense images fan out into many tile
+            # calls (see app.py's run_detection). 5 min leaves headroom for the
+            # slowest single tile without hanging forever.
+            self._client = httpclient.InferenceServerClient(
+                url=url, network_timeout=300.0, connection_timeout=300.0
+            )
         except Exception as exc:  # tritonclient raises plain Exception here
             raise LocateAnythingError(f"failed to create Triton client for {url}: {exc}") from exc
 
