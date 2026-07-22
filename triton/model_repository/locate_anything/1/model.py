@@ -150,6 +150,15 @@ class TritonPythonModel:
         detections = [{"label": prompt, "box": box} for box in boxes]
         detections_json = json.dumps({"detections": detections})
 
+        # The model's hybrid MTP/AR loop allocates large per-step tensors (KV
+        # cache out to max_new_tokens, MTP sampling buffers); once the answer is
+        # extracted they're unreferenced. Release the caching allocator's hoarded
+        # blocks now so the GPU/unified-memory footprint drops back to the ~6GB
+        # resident weights between requests -- otherwise repeated /detect calls
+        # accumulate cached blocks (observed growing to ~64GB on the GB10's
+        # 119GB unified memory), starving co-located workloads.
+        torch.cuda.empty_cache()
+
         output_tensor = pb_utils.Tensor(
             "DETECTIONS_JSON", np.array([detections_json.encode()], dtype=object)
         )
