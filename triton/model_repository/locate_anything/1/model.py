@@ -9,12 +9,15 @@ backend/triton_engine.py in the main repo for the client side of this
 contract, and backend/tiling.py for how these tile-local pixel coordinates
 get translated into whole-image coordinates.
 
-KNOWN RISK (see docs/adr/0005 in the main repo): the exact prompt template,
-<box> tag format, and `generation_mode` parameter are based on the model
-card's documented examples (https://huggingface.co/nvidia/LocateAnything-3B),
-not a live test run against real weights -- this has not been verified on
-real hardware. If zero boxes parse, the raw generated text is logged to
-make that debugging pass tractable.
+VERIFIED ON HARDWARE (DGX Spark, GB10/Blackwell): the prompt template and the
+<box><x1><y1><x2><y2></box> parsing match the model's real output and need no
+adjustment. What DID need fixing vs. the original draft (see docs/adr/0005):
+the model's generate() is a custom MTP/AR loop, NOT HF GenerationMixin.generate
+-- it requires use_cache=True and tokenizer=, takes explicit pixel_values/
+input_ids/... args, and returns the decoded answer STRING (with <box> tags)
+directly, not a token-id tensor. The call below mirrors the model card's
+predict(). If a future model revision returns zero boxes, the raw generated
+text is logged to make that debugging pass tractable.
 """
 
 import io
@@ -97,9 +100,13 @@ class TritonPythonModel:
             }
         ]
 
-        text = self.processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
+        # The model card's predict() uses py_apply_chat_template (the pure-Python
+        # path); fall back to the standard apply_chat_template if this processor
+        # build doesn't expose it.
+        apply = getattr(
+            self.processor, "py_apply_chat_template", self.processor.apply_chat_template
         )
+        text = apply(messages, tokenize=False, add_generation_prompt=True)
         # Matches the model card's documented input-prep exactly (rather
         # than passing `images=[image]` directly) -- process_vision_info
         # may do model-specific preprocessing (resizing, tiling, etc.) that
@@ -109,16 +116,29 @@ class TritonPythonModel:
             self.device
         )
 
+        # The model's custom generate() (in its trust_remote_code modeling file)
+        # is NOT HF GenerationMixin.generate: it takes explicit
+        # pixel_values/input_ids/... args, REQUIRES use_cache=True + tokenizer=,
+        # and returns the decoded answer STRING (with <box> tags) directly -- not
+        # a token-id tensor. Args mirror the model card's documented predict().
         with torch.no_grad():
-            output_ids = self.model.generate(
-                **inputs,
+            answer = self.model.generate(
+                pixel_values=inputs["pixel_values"],
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+                image_grid_hws=inputs.get("image_grid_hws", None),
+                tokenizer=self.tokenizer,
                 max_new_tokens=8192,
+                use_cache=True,
                 generation_mode=mode,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9,
+                repetition_penalty=1.1,
+                verbose=False,
             )
 
-        # Only the newly generated tokens, not the echoed prompt.
-        new_tokens = output_ids[:, inputs["input_ids"].shape[1] :]
-        answer = self.tokenizer.batch_decode(new_tokens, skip_special_tokens=True)[0]
+        # answer is already the decoded string the model produced.
 
         boxes = parse_boxes(answer, width, height)
         if not boxes:
