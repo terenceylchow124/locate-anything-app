@@ -77,6 +77,7 @@ _engine_init_lock = threading.Lock()
 class Detection(BaseModel):
     label: str
     box: list[float]
+    score: float | None = None
 
 
 class DetectResponse(BaseModel):
@@ -128,7 +129,7 @@ async def run_detection(
         all_detections.extend(translate_and_clamp(raw_detections, tile))
 
     merged = merge_detections(all_detections, DEDUP_IOU_THRESHOLD)
-    detections = [Detection(label=m.label, box=m.box) for m in merged]
+    detections = [Detection(label=m.label, box=m.box, score=m.score) for m in merged]
     return detections, elapsed_ms
 
 

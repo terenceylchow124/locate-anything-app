@@ -119,10 +119,12 @@ class TritonPythonModel:
         # The model's custom generate() (in its trust_remote_code modeling file)
         # is NOT HF GenerationMixin.generate: it takes explicit
         # pixel_values/input_ids/... args, REQUIRES use_cache=True + tokenizer=,
-        # and returns the decoded answer STRING (with <box> tags) directly -- not
-        # a token-id tensor. Args mirror the model card's documented predict().
+        # and returns (decoded_answer_string, box_scores) where box_scores is a
+        # list of per-box confidences (mean coord-token probability), one per
+        # emitted <box>, in generation order. Args mirror the model card's
+        # documented predict().
         with torch.no_grad():
-            answer = self.model.generate(
+            answer, box_scores = self.model.generate(
                 pixel_values=inputs["pixel_values"],
                 input_ids=inputs["input_ids"],
                 attention_mask=inputs["attention_mask"],
@@ -139,7 +141,6 @@ class TritonPythonModel:
             )
 
         # answer is already the decoded string the model produced.
-
         boxes = parse_boxes(answer, width, height)
         if not boxes:
             # Nothing parsed -- log the raw text so a real run's actual
@@ -147,7 +148,18 @@ class TritonPythonModel:
             # example) is visible for debugging, not just "zero results".
             print(f"[locate_anything] zero boxes parsed from raw output: {answer!r}")
 
-        detections = [{"label": prompt, "box": box} for box in boxes]
+        # Attach per-box confidence, aligned to parsed boxes in order. If the
+        # counts drift (a generation edge case), pad missing scores with None
+        # rather than misaligning them.
+        scores = list(box_scores or [])
+        detections = [
+            {
+                "label": prompt,
+                "box": box,
+                "score": round(scores[i], 4) if i < len(scores) else None,
+            }
+            for i, box in enumerate(boxes)
+        ]
         detections_json = json.dumps({"detections": detections})
 
         # The model's hybrid MTP/AR loop allocates large per-step tensors (KV

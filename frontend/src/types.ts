@@ -4,6 +4,7 @@
 export interface Detection {
   label: string;
   box: [number, number, number, number]; // [x1, y1, x2, y2] in image pixels
+  score: number | null; // per-box confidence (0..1); null if the engine didn't provide one
 }
 
 export interface DetectResponse {

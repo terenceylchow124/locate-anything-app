@@ -39,6 +39,7 @@ class BoxDetection:
 
     label: str
     box: list[float]  # [x1, y1, x2, y2]
+    score: float | None = None  # per-box confidence from the engine (None if unsupported)
 
 
 def generate_tiles(
@@ -88,6 +89,7 @@ def translate_and_clamp(raw_detections: list[dict], tile: Tile) -> list[BoxDetec
             BoxDetection(
                 label=d["label"],
                 box=[x1 + tile.x0, y1 + tile.y0, x2 + tile.x0, y2 + tile.y0],
+                score=d.get("score"),
             )
         )
     return detections
@@ -142,7 +144,9 @@ def merge_detections(
 def _union(a: BoxDetection, b: BoxDetection) -> BoxDetection:
     ax1, ay1, ax2, ay2 = a.box
     bx1, by1, bx2, by2 = b.box
+    scores = [s for s in (a.score, b.score) if s is not None]
     return BoxDetection(
         label=a.label,
         box=[min(ax1, bx1), min(ay1, by1), max(ax2, bx2), max(ay2, by2)],
+        score=max(scores) if scores else None,
     )
