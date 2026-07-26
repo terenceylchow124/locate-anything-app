@@ -142,16 +142,14 @@ def get_engine() -> InferenceEngine:
 
 async def _run_one_tile(
     engine: InferenceEngine, image: Image.Image, tile, prompt: str, mode: str
-) -> tuple[list[BoxDetection], int]:
+) -> list[BoxDetection]:
     crop = image.crop((tile.x0, tile.y0, tile.x1, tile.y1))
     buf = io.BytesIO()
     crop.save(buf, format="PNG")
     tile_bytes = buf.getvalue()
 
-    start = time.perf_counter()
     raw_detections = await run_in_threadpool(engine.locate_buffer, tile_bytes, prompt, mode)
-    elapsed_ms = int((time.perf_counter() - start) * 1000)
-    return translate_and_clamp(raw_detections, tile), elapsed_ms
+    return translate_and_clamp(raw_detections, tile)
 
 
 async def run_detection(
@@ -176,17 +174,19 @@ async def run_detection(
         async with semaphore:
             return await _run_one_tile(engine, image, tile, prompt, mode)
 
+    start = time.perf_counter()
     results = await asyncio.gather(*(run_bounded(tile) for tile in tiles))
+    # Wall-clock time for the whole batch -- what the frontend's
+    # WaitIndicator countdown actually measures. Summing each tile's own
+    # engine-call duration instead (the old behavior) double-counts time
+    # under LA_TILE_CONCURRENCY > 1, since concurrent tiles overlap in time;
+    # that made the LatencyBadge shown after completion disagree with the
+    # seconds the user just watched tick by.
+    elapsed_ms = int((time.perf_counter() - start) * 1000)
 
     all_detections: list[BoxDetection] = []
-    # Sum of each tile's own engine-call duration, not wall-clock time for
-    # the whole batch -- with LA_TILE_CONCURRENCY > 1 those diverge (this
-    # stays a "total compute time" figure; wall-clock savings show up in the
-    # overall HTTP request latency instead, not in this field).
-    elapsed_ms = 0
-    for detections, tile_elapsed_ms in results:
+    for detections in results:
         all_detections.extend(detections)
-        elapsed_ms += tile_elapsed_ms
 
     merged = merge_detections(all_detections, DEDUP_IOU_THRESHOLD)
     detections = [Detection(label=m.label, box=m.box, score=m.score) for m in merged]
