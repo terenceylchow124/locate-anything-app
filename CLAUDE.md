@@ -317,6 +317,56 @@ redundant weight-loading, so this is a strict improvement over the earlier
 `target=2` setting for this workload -- re-verify if `LA_TILE_CONCURRENCY` or
 `MAX_INPUTS` change materially, same `modal container list` method.
 
+## Concurrent *requests* (multi-prompt): implemented (2026-07-26)
+
+The tile-concurrency work above only parallelized tiles *within* one
+`/detect` call. The frontend's actual multi-prompt comparison feature
+(`useComparison.ts`, up to `MAX_PROMPTS=5` prompts against the same image)
+was still running those N whole `/detect` calls **sequentially** -- an old
+comment there claimed "CPU inference is effectively single-worker", which
+predates the Modal/triton backends and was never revisited.
+
+Fixed on both ends:
+
+- **`backend/queueing.py`**: `SingleWorkerQueue` now takes a `concurrency`
+  parameter (semaphore-based) instead of always being a strict `asyncio.Lock`.
+  Default `concurrency=1` preserves the original behavior exactly (class name
+  is a holdover, not renamed to avoid unnecessary churn).
+- **`backend/app.py`**: new `LA_REQUEST_CONCURRENCY` env var (default `1`)
+  controls this, constructing `_detect_queue = SingleWorkerQueue(concurrency=LA_REQUEST_CONCURRENCY)`.
+  Same local-mode guard as `LA_TILE_CONCURRENCY` (fails at import time if
+  `LA_INFERENCE_BACKEND=local` and this is `>1` -- `la_capi.LocateAnythingEngine`
+  still isn't safe for concurrent calls). This is a second, orthogonal
+  concurrency axis: `LA_REQUEST_CONCURRENCY` bounds concurrent *whole
+  requests*, `LA_TILE_CONCURRENCY` bounds concurrent *tiles within* each of
+  those requests -- multiply them to get worst-case concurrent tile calls to
+  Modal (currently `5 × 8 = 40` -- see the cost-risk note below).
+- **`frontend/src/hooks/useComparison.ts`**: `run()`'s sequential `for` loop
+  replaced with `Promise.all(prompts.map((p) => runOne(p, imageBlob)))`.
+  `runOne` already never throws (catches per-prompt and sets that prompt's own
+  error state), so this was a safe drop-in -- no other UI changes needed,
+  since `results` was already a `Record<string, ComparisonPanelState>` keyed
+  per prompt, designed for independent per-item completion from the start.
+
+**Verified 2026-07-26** against the live docker-compose backend + Modal:
+3 different prompts against the same warm 512×512 tile completed in 2.7s
+total wall-clock (each individual call measured 1.6-2.7s -- i.e. genuinely
+overlapping, not summing). Confirmed the concurrency cap itself works: 6
+concurrent requests against `LA_REQUEST_CONCURRENCY=5` showed 5 requests with
+`queue_wait_ms: 0` and the 6th with `queue_wait_ms: 1900` (queued behind the
+other five).
+
+**Cost-risk note**: `LA_REQUEST_CONCURRENCY=5` (matching `MAX_PROMPTS`) ×
+`LA_TILE_CONCURRENCY=8` means a worst case of ~40 concurrent tile calls if all
+5 prompts are run against a dense multi-tile scene at once -- each of those
+could trigger its own Modal container cold start (see the `@modal.concurrent`
+section above for how that scales into container count). Both are currently
+set to `5`/`8` in `.env` without having load-tested that worst case (only
+tested on a single-tile image, deliberately, to avoid an expensive surprise
+mid-development) -- **before relying on this for a real dense-scene multi-prompt
+run, either test it once deliberately with the Modal dashboard open to watch
+container count/spend, or dial one of the two down first.**
+
 ## Running locally via Docker
 
 `docker compose up --build` (from repo root) builds and runs both `backend`

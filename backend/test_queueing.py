@@ -68,6 +68,24 @@ async def test_second_caller_reports_wait_time_for_first_callers_work():
     assert second_wait >= 80  # waited for most of first_work's ~100ms
 
 
+async def test_concurrency_above_one_lets_callers_run_in_parallel():
+    queue = SingleWorkerQueue(concurrency=3)
+    currently_running = 0
+    max_concurrent = 0
+
+    async def work():
+        nonlocal currently_running, max_concurrent
+        currently_running += 1
+        max_concurrent = max(max_concurrent, currently_running)
+        await asyncio.sleep(0.05)
+        currently_running -= 1
+        return "ok"
+
+    await asyncio.gather(queue.run(work), queue.run(work), queue.run(work))
+
+    assert max_concurrent == 3
+
+
 async def test_a_failing_caller_does_not_break_the_queue_for_the_next_one():
     queue = SingleWorkerQueue()
 

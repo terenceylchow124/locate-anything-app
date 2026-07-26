@@ -79,6 +79,20 @@ if LA_INFERENCE_BACKEND == "local" and LA_TILE_CONCURRENCY > 1:
         "model instance). Leave LA_TILE_CONCURRENCY unset/1, or switch to triton/modal."
     )
 
+# How many whole /detect requests (e.g. multiple prompts run against the same
+# image by the frontend's comparison feature, up to MAX_PROMPTS=5) run at
+# once, instead of queueing behind each other one at a time. Same local-mode
+# guard and reasoning as LA_TILE_CONCURRENCY -- this is a second, orthogonal
+# axis of concurrency (across whole requests, each of which may itself fan
+# out into LA_TILE_CONCURRENCY-many concurrent tile calls).
+LA_REQUEST_CONCURRENCY = int(os.environ.get("LA_REQUEST_CONCURRENCY", "1"))
+if LA_INFERENCE_BACKEND == "local" and LA_REQUEST_CONCURRENCY > 1:
+    raise RuntimeError(
+        "LA_REQUEST_CONCURRENCY > 1 is not supported with LA_INFERENCE_BACKEND=local -- "
+        "la_capi.LocateAnythingEngine is not safe for concurrent calls (single loaded "
+        "model instance). Leave LA_REQUEST_CONCURRENCY unset/1, or switch to triton/modal."
+    )
+
 app = FastAPI(title="LocateAnything-3B detect API")
 
 # Local portfolio demo, no auth/user data -- open CORS so the frontend (a
@@ -90,10 +104,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serializes whole /detect requests (not just individual tile calls) through
-# the single loaded engine, and reports how long a queued request waited for
-# its turn -- see ticket #02b and backend/queueing.py.
-_detect_queue = SingleWorkerQueue()
+# Bounds whole /detect requests (not just individual tile calls) to
+# LA_REQUEST_CONCURRENCY at once, and reports how long a queued request
+# waited for a free slot -- see ticket #02b and backend/queueing.py.
+_detect_queue = SingleWorkerQueue(concurrency=LA_REQUEST_CONCURRENCY)
 _engine: InferenceEngine | None = None
 _engine_init_lock = threading.Lock()
 
@@ -146,10 +160,10 @@ async def run_detection(
     """Tile the image, run tiles through the engine (up to LA_TILE_CONCURRENCY
     at once), merge results.
 
-    Runs as the single unit of work handed to `_detect_queue` -- the whole
-    thing completes before the next queued request's turn starts (ticket
-    #02b), not just each individual tile call. `LA_TILE_CONCURRENCY` bounds
-    concurrency *within* this one call, orthogonal to that per-request queue.
+    Runs as one unit of work handed to `_detect_queue`, which bounds how many
+    such calls run at once to `LA_REQUEST_CONCURRENCY` (ticket #02b).
+    `LA_TILE_CONCURRENCY` bounds concurrency *within* one such call, on the
+    orthogonal axis of that request's own tiles.
 
     Not HTTP-specific: lets `LocateAnythingError` propagate rather than
     raising `HTTPException` itself -- the route handler owns that

@@ -78,3 +78,25 @@ def test_local_backend_rejects_tile_concurrency_above_one():
     )
     assert result.returncode != 0
     assert "LA_TILE_CONCURRENCY > 1 is not supported with LA_INFERENCE_BACKEND=local" in result.stderr
+
+
+def test_local_backend_rejects_request_concurrency_above_one():
+    # Same reasoning as the tile-concurrency guard above, for the other
+    # concurrency axis (whole /detect requests, see LA_REQUEST_CONCURRENCY).
+    backend_dir = Path(__file__).resolve().parent
+    result = subprocess.run(
+        [sys.executable, "-c", "import app"],
+        cwd=backend_dir,
+        env={
+            "LA_INFERENCE_BACKEND": "local",
+            "LA_REQUEST_CONCURRENCY": "4",
+            "PATH": "/usr/bin:/bin",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert (
+        "LA_REQUEST_CONCURRENCY > 1 is not supported with LA_INFERENCE_BACKEND=local"
+        in result.stderr
+    )

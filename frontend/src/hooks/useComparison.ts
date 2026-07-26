@@ -76,12 +76,13 @@ export function useComparison(resolveImageBlob: () => Promise<Blob>, blockedByOt
       return;
     }
 
-    // Sequential, not parallel: CPU inference is effectively single-worker
-    // (see ticket #02b), so parallel calls would just queue behind each
-    // other. One prompt failing doesn't cancel the rest of the run.
-    for (const p of prompts) {
-      await runOne(p, imageBlob);
-    }
+    // Parallel, not sequential: the backend now bounds actual concurrency
+    // itself (LA_REQUEST_CONCURRENCY -- CPU/local mode forces this to 1
+    // server-side, so this degrades to effectively-sequential there without
+    // needing a client-side check). runOne() never throws (it catches and
+    // sets each prompt's own error state), so one prompt failing doesn't
+    // affect the others or reject this Promise.all.
+    await Promise.all(prompts.map((p) => runOne(p, imageBlob)));
     setIsComparing(false);
   }
 
