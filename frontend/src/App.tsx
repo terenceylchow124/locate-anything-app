@@ -87,6 +87,24 @@ function App() {
     comparison.clearResults();
   }
 
+  function handleImageUrlLoad(url: string) {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    // Not going through the uploadedFile path -- resolveImageBlob() falls
+    // back to fetch(imageUrl) for this, same as a scene's default_image.
+    // That fetch needs the remote server to allow cross-origin reads (plain
+    // <img> display doesn't need that, only actually POSTing the bytes to
+    // /detect does) -- a URL that displays fine but fails to run detection
+    // is very likely a CORS-blocked source, not a bug here.
+    setUploadedFile(null);
+    setImageUrl(trimmed);
+    comparison.clearResults();
+  }
+
   function handleRun() {
     if (busy || prompts.length === 0) return;
     comparison.run();
@@ -120,6 +138,7 @@ function App() {
         selectedSceneId={selectedSceneId}
         onSelectScene={handleSceneSelect}
         onUpload={handleFileUpload}
+        onLoadImageUrl={handleImageUrlLoad}
         disabled={busy}
         availablePrompts={scene.default_prompts}
         selected={prompts}

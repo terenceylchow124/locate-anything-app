@@ -38,5 +38,13 @@
     "default_image": "/scene-config/images/dense_night_market.jpg",
     "default_prompts": ["person"],
     "expected_count_range": null
+  },
+  {
+    "id": "park",
+    "display_name": "Park",
+    "category": "life",
+    "default_image": "/scene-config/images/dense_park.png",
+    "default_prompts": ["car"],
+    "expected_count_range": null
   }
 ]
