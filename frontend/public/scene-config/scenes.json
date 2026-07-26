@@ -46,5 +46,13 @@
     "default_image": "/scene-config/images/dense_park.png",
     "default_prompts": ["car"],
     "expected_count_range": null
+  },
+    {
+    "id": "stadium-chair",
+    "display_name": "Stadium chairs",
+    "category": "crowd",
+    "default_image": "https://mengqilei-count-anything-demo.hf.space/gradio_api/file=/tmp/gradio/2b4e3e243018c0bdc964c2133d83a43da77f360444bdbaa8bf37626f5603d750/image.webp",
+    "default_prompts": ["chair"],
+    "expected_count_range": null
   }
 ]

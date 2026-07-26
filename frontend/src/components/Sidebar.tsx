@@ -1,5 +1,5 @@
-import { Download, FileJson, FileText, Layers, LayoutGrid, Link, Play, Upload } from "lucide-react";
-import { type ChangeEvent, type FormEvent, useState } from "react";
+import { Download, FileJson, FileText, Layers, LayoutGrid, Play, Upload } from "lucide-react";
+import type { ChangeEvent } from "react";
 import { PromptTags } from "./PromptTags";
 import { SceneSelector } from "./SceneSelector";
 
@@ -9,7 +9,6 @@ interface Props {
   selectedSceneId: string;
   onSelectScene: (id: string) => void;
   onUpload: (file: File) => void;
-  onLoadImageUrl: (url: string) => void;
   disabled: boolean;
   // prompts
   availablePrompts: string[];
@@ -36,15 +35,6 @@ interface Props {
 // Persistent left control panel. Sized to fit the viewport without scrolling
 // (overflow-hidden); the analysis pane on the right does the auto-fitting.
 export function Sidebar(p: Props) {
-  const [urlInput, setUrlInput] = useState("");
-
-  function submitUrl(e: FormEvent) {
-    e.preventDefault();
-    if (!urlInput.trim()) return;
-    p.onLoadImageUrl(urlInput);
-    setUrlInput("");
-  }
-
   return (
     <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-hidden border-r border-border bg-bg px-4 py-5">
       <h1 className="shrink-0 text-base font-semibold tracking-tight text-text-h">
@@ -72,25 +62,6 @@ export function Sidebar(p: Props) {
             }}
           />
         </label>
-        <form onSubmit={submitUrl} className="flex gap-1.5">
-          <input
-            type="url"
-            inputMode="url"
-            placeholder="Or paste an image URL"
-            value={urlInput}
-            disabled={p.disabled}
-            onChange={(e) => setUrlInput(e.target.value)}
-            className="min-w-0 flex-1 rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-sm text-text-h placeholder:text-text focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={p.disabled || !urlInput.trim()}
-            aria-label="Load image from URL"
-            className="inline-flex shrink-0 items-center justify-center rounded-lg border border-border px-2.5 text-text-h transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Link size={16} />
-          </button>
-        </form>
       </section>
 
       <section className="flex min-h-0 flex-col gap-2">
