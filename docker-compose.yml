@@ -40,15 +40,14 @@ services:
     depends_on:
       - backend
     volumes:
-      # Mounted as a DIRECTORY, not the scenes.json file directly -- a
-      # single-file bind mount breaks as soon as the file is saved via
-      # write-new-file-then-rename (what most editors/tools do): the mount
-      # tracks the original inode, which the rename orphans, so edits stop
-      # appearing in the container even though the file looks right on the
-      # host. Mounting the containing directory avoids that (see
-      # frontend/src/scenes.ts's comment for the full explanation) -- edit
-      # scenes.json on the host and refresh the browser, no rebuild needed.
-      # Adding a scene also needs an image under frontend/public/scenes/,
-      # which is NOT mounted -- a new image still needs `docker compose up
-      # --build frontend`.
+      # Mounted as a DIRECTORY, not individual files -- a single-file bind
+      # mount breaks as soon as the file is saved via write-new-file-then-
+      # rename (what most editors/tools do): the mount tracks the original
+      # inode, which the rename orphans, so edits stop appearing in the
+      # container even though the file looks right on the host. Mounting the
+      # containing directory avoids that (see frontend/src/scenes.ts's
+      # comment for the full explanation). This one mount covers both
+      # scenes.json and images/ (frontend/public/scene-config/images/) since
+      # both live under scene-config/ -- add a scene: edit scenes.json + drop
+      # an image in images/, then just refresh the browser, no rebuild.
       - ./frontend/public/scene-config:/usr/share/nginx/html/scene-config:ro

@@ -3,9 +3,10 @@ import type { Scene } from "./types";
 // Scene data lives in public/scene-config/scenes.json, fetched at runtime
 // (not imported at build time) so it can be bind-mounted into the running
 // container (docker-compose.yml) -- edit it + drop an image under
-// public/scenes/ and refresh, no rebuild needed. It's in its own
-// scene-config/ subdirectory, mounted as a directory rather than mounting
-// this one file directly -- a single-file bind mount breaks the moment the
+// public/scene-config/images/ and refresh, no rebuild needed. Both live
+// under one scene-config/ directory, mounted as a directory (covers the
+// whole thing in one mount) rather than mounting individual files -- a
+// single-file bind mount breaks the moment the
 // file is saved via the common "write a new file, rename over the old one"
 // pattern most editors/tools use (the mount tracks the original inode, which
 // the rename orphans -- edits stop showing up in the container even though
