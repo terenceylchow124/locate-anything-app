@@ -34,7 +34,8 @@ export interface Scene {
 // One prompt's state within a side-by-side comparison run (ticket #06).
 // "pending" = queued, not yet started; "in-flight" = its /detect call is
 // running now; others may already be "done" while this one is still
-// pending/in-flight, since the run is sequential (single-worker backend).
+// pending/in-flight -- prompts run concurrently (see useComparison.ts and
+// backend LA_REQUEST_CONCURRENCY), so completion order isn't fixed.
 export type ComparisonPanelState =
   | { status: "pending" }
   | { status: "in-flight"; startedAt: number }

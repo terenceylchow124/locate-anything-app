@@ -29,6 +29,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # Both are baked in at build time (Vite env vars aren't readable at
+        # container runtime) -- rebuild (`docker compose up --build frontend`)
+        # for a change to either to take effect. See .env.example.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_DEFAULT_SCENE_ID: ${VITE_DEFAULT_SCENE_ID:-}
     ports:
       - "5173:80"
     depends_on:

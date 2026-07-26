@@ -6,11 +6,11 @@ import { Sidebar } from "./components/Sidebar";
 import { useComparison } from "./hooks/useComparison";
 import { collectRows, downloadCSV, downloadJSON } from "./lib/export";
 import { colorForPrompt } from "./lib/palette";
-import { SCENES } from "./scenes";
+import { DEFAULT_SCENE, SCENES } from "./scenes";
 
 function App() {
-  const [selectedSceneId, setSelectedSceneId] = useState(SCENES[0].id);
-  const scene = SCENES.find((s) => s.id === selectedSceneId) ?? SCENES[0];
+  const [selectedSceneId, setSelectedSceneId] = useState(DEFAULT_SCENE.id);
+  const scene = SCENES.find((s) => s.id === selectedSceneId) ?? DEFAULT_SCENE;
 
   const [imageUrl, setImageUrl] = useState(scene.default_image);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);

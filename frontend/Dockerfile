@@ -11,6 +11,10 @@ COPY . .
 # unaffected -- src/api.ts keeps its own http://localhost:8000 default there.)
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+# Empty by default -> src/scenes.ts falls back to the first entry in
+# scenes.json. Override to make a different scene load on first visit.
+ARG VITE_DEFAULT_SCENE_ID=""
+ENV VITE_DEFAULT_SCENE_ID=$VITE_DEFAULT_SCENE_ID
 RUN npm run build
 
 FROM nginx:1.27-alpine

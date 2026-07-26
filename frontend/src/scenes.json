@@ -1,0 +1,42 @@
+[
+  {
+    "id": "hardware-screws",
+    "display_name": "Hardware / screws",
+    "category": "hardware",
+    "default_image": "/scenes/dense_screws.jpg",
+    "default_prompts": ["screw", "hex nut"],
+    "expected_count_range": [80, 125]
+  },
+  {
+    "id": "pallets-shelves",
+    "display_name": "Pallets / shelves",
+    "category": "logistics",
+    "default_image": "/scenes/dense_pallets.jpg",
+    "default_prompts": ["pallet", "stack of boxes"],
+    "expected_count_range": [10, 16]
+  },
+  {
+    "id": "orchard-crops",
+    "display_name": "Orchard / crops",
+    "category": "agriculture",
+    "default_image": "/scenes/dense_apples.jpg",
+    "default_prompts": ["apple"],
+    "expected_count_range": [10, 18]
+  },
+  {
+    "id": "temple-offerings",
+    "display_name": "Temple offerings",
+    "category": "culture",
+    "default_image": "/scenes/dense_ema_plaques.jpg",
+    "default_prompts": ["wooden plaque", "prayer plaque"],
+    "expected_count_range": [35, 65]
+  },
+  {
+    "id": "night-market-crowd",
+    "display_name": "Night-market crowd",
+    "category": "crowd",
+    "default_image": "/scenes/dense_night_market.jpg",
+    "default_prompts": ["person"],
+    "expected_count_range": null
+  }
+]
