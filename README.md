@@ -44,7 +44,17 @@ export LA_INFERENCE_BACKEND=triton
 export LA_TRITON_URL=<gpu-server-address>:8000
 ```
 
-(or the equivalent env vars in `docker-compose.yml` / a `.env` file). See `triton/README.md` for building and running the Triton server itself (written for an NVIDIA DGX Spark, but not DGX-Spark-specific beyond the ARM64/Blackwell build notes), and `docs/adr/0005-pluggable-inference-backend-local-or-triton.md` for the design rationale. The two backends are interchangeable from the frontend's point of view — same `/detect` contract either way.
+(or the equivalent env vars in `docker-compose.yml` / a `.env` file). See `triton/README.md` for building and running the Triton server itself (written for an NVIDIA DGX Spark, but not DGX-Spark-specific beyond the ARM64/Blackwell build notes), and `docs/adr/0005-pluggable-inference-backend-local-or-triton.md` for the design rationale.
+
+A third option runs the same GPU model on [Modal](https://modal.com) instead of self-hosted hardware:
+
+```sh
+export LA_INFERENCE_BACKEND=modal
+export LA_MODAL_URL=<modal endpoint URL>
+export LA_MODAL_TOKEN=<shared bearer token>
+```
+
+See `CLAUDE.md`'s "Deploying modal_app" section for how to deploy `modal_app/model_server.py` and provision the required secrets. All three backends are interchangeable from the frontend's point of view — same `/detect` contract either way.
 
 ## Development environment
 

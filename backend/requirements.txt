@@ -12,3 +12,7 @@ Pillow>=10.0
 # a remote Triton Inference Server, no local GPU/CUDA needed on this side.
 tritonclient[http]>=2.40
 numpy>=1.26
+
+# LA_INFERENCE_BACKEND=modal support (backend/modal_engine.py) -- talks to a
+# Modal-hosted GPU deployment (modal_app/model_server.py) over HTTPS.
+httpx>=0.27

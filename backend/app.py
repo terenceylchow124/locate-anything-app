@@ -20,6 +20,7 @@ from engine import InferenceEngine
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from la_capi import MODE_CODES, LocateAnythingEngine, LocateAnythingError
+from modal_engine import ModalEngine
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 from queueing import SingleWorkerQueue
@@ -49,11 +50,15 @@ LA_MODEL_PATH = Path(
 VALID_MODES = set(MODE_CODES)
 
 # Which InferenceEngine to construct: "local" (default, locate-anything.cpp
-# via ctypes, la_capi.py) or "triton" (remote Triton Inference Server on a
-# GPU box, triton_engine.py) -- see docs/adr/0005-pluggable-inference-backend-local-or-triton.md.
+# via ctypes, la_capi.py), "triton" (self-hosted Triton Inference Server on a
+# GPU box, triton_engine.py), or "modal" (Modal-hosted GPU deployment,
+# modal_engine.py) -- see docs/adr/0005-pluggable-inference-backend-local-or-triton.md
+# and modal_app/model_server.py.
 LA_INFERENCE_BACKEND = os.environ.get("LA_INFERENCE_BACKEND", "local")
 LA_TRITON_URL = os.environ.get("LA_TRITON_URL", "localhost:8000")
 LA_TRITON_MODEL_NAME = os.environ.get("LA_TRITON_MODEL_NAME", "locate_anything")
+LA_MODAL_URL = os.environ.get("LA_MODAL_URL", "")
+LA_MODAL_TOKEN = os.environ.get("LA_MODAL_TOKEN", "")
 
 app = FastAPI(title="LocateAnything-3B detect API")
 
@@ -95,6 +100,8 @@ def get_engine() -> InferenceEngine:
             if _engine is None:
                 if LA_INFERENCE_BACKEND == "triton":
                     _engine = TritonEngine(LA_TRITON_URL, LA_TRITON_MODEL_NAME)
+                elif LA_INFERENCE_BACKEND == "modal":
+                    _engine = ModalEngine(LA_MODAL_URL, LA_MODAL_TOKEN)
                 else:
                     _engine = LocateAnythingEngine(LA_LIB_PATH, LA_MODEL_PATH)
     return _engine
