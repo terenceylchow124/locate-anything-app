@@ -18,6 +18,13 @@ backend/modal_engine.py is a drop-in InferenceEngine, same as TritonEngine.
 Deploy:
     modal deploy modal_app/model_server.py
 
+GPU type and per-container concurrency are read from *this shell's*
+environment at deploy time (LA_MODAL_GPU, default "A10G"; LA_MODAL_MAX_INPUTS,
+default "4") -- not Modal Secrets, since @app.cls's gpu= and @modal.concurrent's
+max_inputs= are deploy-time decorator arguments resolved locally, not
+something the remote container reads:
+    LA_MODAL_GPU=L40S LA_MODAL_MAX_INPUTS=2 modal deploy modal_app/model_server.py
+
 Then point the main backend at the printed web endpoint URL:
     export LA_INFERENCE_BACKEND=modal
     export LA_MODAL_URL=<printed endpoint URL, ends in /detect>
@@ -33,7 +40,9 @@ Requires two Modal secrets (see README's "Deploying modal_app" section):
 
 from __future__ import annotations
 
+import asyncio
 import io
+import os
 import re
 
 import modal
@@ -41,6 +50,18 @@ from fastapi import File, Form, Header, HTTPException, UploadFile
 
 MODEL_ID = "nvidia/LocateAnything-3B"
 BOX_TAG_RE = re.compile(r"<box><(\d+)><(\d+)><(\d+)><(\d+)></box>")
+GPU_TYPE = os.environ.get("LA_MODAL_GPU", "A10G")
+# Max concurrent /detect inputs one container will accept before Modal spins
+# up another container -- also a deploy-time-only value, same as GPU_TYPE
+# (read locally by `modal deploy`, not by the running container). See
+# CLAUDE.md's concurrency benchmark for the cold-start-vs-warm-throughput
+# trade-off this trades off.
+MAX_INPUTS = int(os.environ.get("LA_MODAL_MAX_INPUTS", "4"))
+# Equal to MAX_INPUTS -- autoscaler packs each container up to the hard cap
+# before opening a new one, rather than leaving headroom for burst (see
+# CLAUDE.md: measured this trades a bit more per-container GPU contention for
+# fewer containers/less redundant weight-loading).
+TARGET_INPUTS = MAX_INPUTS
 
 app = modal.App("locate-anything")
 
@@ -82,7 +103,7 @@ hf_cache = modal.Volume.from_name("la-hf-cache", create_if_missing=True)
 
 @app.cls(
     image=image,
-    gpu="A10G",
+    gpu=GPU_TYPE,
     volumes={"/root/.cache/huggingface": hf_cache},
     secrets=[
         modal.Secret.from_name("la-modal-shared-token"),
@@ -94,6 +115,18 @@ hf_cache = modal.Volume.from_name("la-hf-cache", create_if_missing=True)
     # at ~$0.02/request-burst instead of ~$0.09 (see CLAUDE.md's cost notes).
     scaledown_window=60,
 )
+# Lets one container handle multiple concurrent /detect calls instead of
+# Modal spinning up a separate container (and paying its own cold start +
+# duplicate ~6GB weight load) per concurrent request -- see CLAUDE.md's
+# concurrency benchmark for why LA_TILE_CONCURRENCY>1 on the backend side was
+# previously turning into N separate containers. GPU compute itself still
+# serializes on the one card either way; this trades that same GPU-bound
+# serialization for skipping the redundant load/cold-start cost. Conservative
+# max_inputs -- each concurrent /detect holds its own KV cache + activations
+# (see the model's generate() max_new_tokens=8192) on top of the ~6GB
+# resident weights; raise only after checking GPU memory headroom on the
+# Modal dashboard during a real burst.
+@modal.concurrent(max_inputs=MAX_INPUTS, target_inputs=TARGET_INPUTS)
 class LocateAnythingModel:
     @modal.enter()
     def load(self) -> None:
@@ -291,4 +324,9 @@ class LocateAnythingModel:
             raise HTTPException(status_code=401, detail="invalid or missing bearer token")
 
         image_bytes = await file.read()
-        return self._detect(image_bytes, prompt, mode)
+        # _detect() is a blocking call (torch, no internal awaits) -- run it
+        # in a thread so this async handler doesn't hog the container's
+        # single event loop for its whole duration, which would otherwise
+        # serialize concurrent inputs even with @modal.concurrent applied
+        # (see that decorator's note: async functions share one thread).
+        return await asyncio.to_thread(self._detect, image_bytes, prompt, mode)

@@ -16,6 +16,7 @@ services:
       - LA_TRITON_MODEL_NAME=${LA_TRITON_MODEL_NAME:-locate_anything}
       - LA_MODAL_URL=${LA_MODAL_URL:-}
       - LA_MODAL_TOKEN=${LA_MODAL_TOKEN:-}
+      - LA_TILE_CONCURRENCY=${LA_TILE_CONCURRENCY:-1}
     volumes:
       # Model weights are not baked into the image (~6.3GB GGUF) -- mount the
       # host's already-downloaded models/ dir read-only. See README's "Get

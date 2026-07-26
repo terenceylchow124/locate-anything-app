@@ -10,6 +10,7 @@ detections out.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import os
 import threading
@@ -60,6 +61,24 @@ LA_TRITON_MODEL_NAME = os.environ.get("LA_TRITON_MODEL_NAME", "locate_anything")
 LA_MODAL_URL = os.environ.get("LA_MODAL_URL", "")
 LA_MODAL_TOKEN = os.environ.get("LA_MODAL_TOKEN", "")
 
+# How many tiles of one image run_detection sends to the engine at once.
+# Default 1 preserves the original one-at-a-time behavior. Only safe to raise
+# for backends whose engine instance can actually handle concurrent calls --
+# la_capi.LocateAnythingEngine explicitly can't (single loaded model
+# instance, see its docstring), so this fails fast at import time rather than
+# silently corrupting local-mode inference. triton/modal are plain HTTP
+# clients (Triton serves concurrent requests; Modal autoscales additional
+# GPU containers per concurrent request), so concurrency there mostly trades
+# wall-clock time for the same total GPU-seconds, not more total cost -- see
+# CLAUDE.md's concurrency benchmark.
+LA_TILE_CONCURRENCY = int(os.environ.get("LA_TILE_CONCURRENCY", "1"))
+if LA_INFERENCE_BACKEND == "local" and LA_TILE_CONCURRENCY > 1:
+    raise RuntimeError(
+        "LA_TILE_CONCURRENCY > 1 is not supported with LA_INFERENCE_BACKEND=local -- "
+        "la_capi.LocateAnythingEngine is not safe for concurrent calls (single loaded "
+        "model instance). Leave LA_TILE_CONCURRENCY unset/1, or switch to triton/modal."
+    )
+
 app = FastAPI(title="LocateAnything-3B detect API")
 
 # Local portfolio demo, no auth/user data -- open CORS so the frontend (a
@@ -107,33 +126,53 @@ def get_engine() -> InferenceEngine:
     return _engine
 
 
+async def _run_one_tile(
+    engine: InferenceEngine, image: Image.Image, tile, prompt: str, mode: str
+) -> tuple[list[BoxDetection], int]:
+    crop = image.crop((tile.x0, tile.y0, tile.x1, tile.y1))
+    buf = io.BytesIO()
+    crop.save(buf, format="PNG")
+    tile_bytes = buf.getvalue()
+
+    start = time.perf_counter()
+    raw_detections = await run_in_threadpool(engine.locate_buffer, tile_bytes, prompt, mode)
+    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    return translate_and_clamp(raw_detections, tile), elapsed_ms
+
+
 async def run_detection(
     engine: InferenceEngine, image: Image.Image, prompt: str, mode: str
 ) -> tuple[list[Detection], int]:
-    """Tile the image, run each tile through the engine, merge results.
+    """Tile the image, run tiles through the engine (up to LA_TILE_CONCURRENCY
+    at once), merge results.
 
     Runs as the single unit of work handed to `_detect_queue` -- the whole
     thing completes before the next queued request's turn starts (ticket
-    #02b), not just each individual tile call.
+    #02b), not just each individual tile call. `LA_TILE_CONCURRENCY` bounds
+    concurrency *within* this one call, orthogonal to that per-request queue.
 
     Not HTTP-specific: lets `LocateAnythingError` propagate rather than
     raising `HTTPException` itself -- the route handler owns that
     translation (see `docs/CODING_STANDARDS.md`'s Structure rule).
     """
     tiles = generate_tiles(*image.size)
+    semaphore = asyncio.Semaphore(LA_TILE_CONCURRENCY)
+
+    async def run_bounded(tile):
+        async with semaphore:
+            return await _run_one_tile(engine, image, tile, prompt, mode)
+
+    results = await asyncio.gather(*(run_bounded(tile) for tile in tiles))
+
     all_detections: list[BoxDetection] = []
+    # Sum of each tile's own engine-call duration, not wall-clock time for
+    # the whole batch -- with LA_TILE_CONCURRENCY > 1 those diverge (this
+    # stays a "total compute time" figure; wall-clock savings show up in the
+    # overall HTTP request latency instead, not in this field).
     elapsed_ms = 0
-
-    for tile in tiles:
-        crop = image.crop((tile.x0, tile.y0, tile.x1, tile.y1))
-        buf = io.BytesIO()
-        crop.save(buf, format="PNG")
-        tile_bytes = buf.getvalue()
-
-        start = time.perf_counter()
-        raw_detections = await run_in_threadpool(engine.locate_buffer, tile_bytes, prompt, mode)
-        elapsed_ms += int((time.perf_counter() - start) * 1000)
-        all_detections.extend(translate_and_clamp(raw_detections, tile))
+    for detections, tile_elapsed_ms in results:
+        all_detections.extend(detections)
+        elapsed_ms += tile_elapsed_ms
 
     merged = merge_detections(all_detections, DEDUP_IOU_THRESHOLD)
     detections = [Detection(label=m.label, box=m.box, score=m.score) for m in merged]

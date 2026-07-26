@@ -146,6 +146,39 @@ export LA_MODAL_URL=<printed endpoint URL>
 export LA_MODAL_TOKEN=<the LA_MODAL_SHARED_TOKEN value>
 ```
 
+**GPU type** is `LA_MODAL_GPU` (default `A10G`), read from *this shell's*
+environment by `modal_app/model_server.py` at deploy time only — it's a
+deploy-time `@app.cls(gpu=...)` decorator argument, resolved locally when you
+run `modal deploy`, not something the running container reads. Changing it
+always requires a redeploy (`LA_MODAL_GPU=L40S modal deploy
+modal_app/model_server.py`); this is different from `LA_MODAL_URL`/`LA_MODAL_TOKEN`,
+which the backend container reads per-request and just need a backend
+restart, no Modal redeploy. Also: only `A10G` worked without a payment method
+on file — Modal blocks `L40S` (and presumably other non-A10 GPUs) with
+"Please add a payment method" even though the account has free credit.
+
+Only the GPU model server (`modal_app/model_server.py`) runs on Modal today.
+`backend/app.py` (tiling/orchestration) and the frontend are not deployed
+anywhere yet — both run locally via `docker compose` and the backend calls
+out to the Modal endpoint over HTTPS. See "Deploying to Vercel" below for the
+plan to change that.
+
+**A10G vs L40S, measured 2026-07-26** (4 real detect calls each, apple crops
+from `backend/tests/fixtures/dense_apples.jpg`, one cold + three warm):
+
+| GPU | cold start | warm avg/tile | $/sec | $/tile (warm) |
+|---|---|---|---|---|
+| A10G | 21.9s | 1.32s | $0.000306 | $0.000404 |
+| L40S | 22.6s | 1.07s | $0.000542 | $0.000580 (+44%) |
+
+L40S is ~19% faster per tile but costs 77% more per second, so it's ~44%
+*more expensive per tile* despite being faster — the speedup doesn't offset
+the price jump for this model/tile size. Cold start is dominated by weight
+loading (I/O), not compute, so it's a wash between the two. **Stick with
+A10G** unless a future change (e.g. much larger tiles, or a model revision
+that's meaningfully more compute-bound) shifts this math — re-measure with
+the same throwaway-crop method above rather than assuming it still holds.
+
 **Cost control**: `scaledown_window=60` (60s) trades a few more cold starts for
 capping idle-GPU spend, since A10G idle time is still billed at the same
 GPU-second rate as active inference. Also set a spending limit in the Modal
@@ -188,6 +221,101 @@ one account's $30/month credit pool. Any of them that already has a working
 Dockerfile can be ported with `modal.Image.from_dockerfile(...)` with no
 rewrite at all; only reach for the `@app.cls` + `@modal.enter()` pattern above
 if a project needs a model kept warm in memory across calls (as this one does).
+
+## Concurrent tile processing: implemented (2026-07-26)
+
+`LA_TILE_CONCURRENCY` (default `1`) bounds how many of one image's tiles
+`backend/app.py`'s `run_detection` sends to the engine at once (`asyncio.gather`
++ `asyncio.Semaphore`), instead of the original one-at-a-time loop. Orthogonal
+to `queueing.SingleWorkerQueue`, which still serializes different *requests*
+against each other — this only parallelizes tiles *within* one request.
+
+**Only safe for `triton`/`modal` backends.** `la_capi.LocateAnythingEngine`
+(local CPU mode) is a single loaded model instance and isn't safe for
+concurrent calls — `app.py` raises `RuntimeError` at import time if
+`LA_INFERENCE_BACKEND=local` and `LA_TILE_CONCURRENCY>1`, rather than letting
+that silently corrupt inference.
+
+**Measured 2026-07-26**, full `dense_apples.jpg` (2400×1600, 24 tiles) through
+the real docker-compose backend against the live Modal deployment:
+
+| Run | Wall-clock | Compute (`inference_time_ms` sum) |
+|---|---|---|
+| `LA_TILE_CONCURRENCY=1` (sequential, 1 cold start) | 55.0s | 52.7s |
+| `LA_TILE_CONCURRENCY=8`, **first burst** (up to 8 containers cold-start at once) | 19.1s | 131.2s |
+| `LA_TILE_CONCURRENCY=8`, **containers already warm** (immediate re-run) | 9.5s | 61.3s |
+| `LA_TILE_CONCURRENCY=8`, full docker-compose `/detect` call, warm | **6.65s** | 42.8s |
+
+**The nuance that matters**: concurrency isn't "same cost, just faster" —
+that's only true once enough containers are already warm. The *first*
+concurrent burst triggers several simultaneous cold starts (Modal scales out
+one container per concurrent request), so total billed GPU-seconds jumps
+(here ~2.5x) even though wall-clock time drops. Once those containers are
+warm, a repeat burst gets the wall-clock win (55s → ~7-10s) for roughly the
+same total cost as running sequentially. For a bursty demo/portfolio traffic
+pattern (occasional visitors, not sustained load), expect to pay the "first
+burst" cost regularly, not just once — `scaledown_window=60` means containers
+scale back to zero between visitors.
+
+### Per-container concurrency: `@modal.concurrent` (2026-07-26)
+
+The table above (`LA_TILE_CONCURRENCY=8`) was measured against a deploy with
+no `@modal.concurrent` on `LocateAnythingModel` -- so each of the 8 concurrent
+tile requests got its **own** container (confirmed via `modal container
+list`: 8 active containers during that burst). That's simple but means N
+concurrent requests always cost N cold-starts/weight-loads during a burst.
+
+`modal_app/model_server.py` now stacks `@modal.concurrent(max_inputs=MAX_INPUTS,
+target_inputs=MAX_INPUTS//2)` under `@app.cls(...)`, letting one container
+accept multiple concurrent `/detect` calls (the FastAPI handler offloads the
+blocking `_detect()` call via `asyncio.to_thread` so concurrent inputs on the
+same container can actually interleave, not queue behind the event loop).
+`MAX_INPUTS` is `LA_MODAL_MAX_INPUTS` (default `4`), read the same way as
+`LA_MODAL_GPU` -- deploy-time only, resolved locally when you run `modal
+deploy`, not something the running container reads:
+
+```sh
+LA_MODAL_GPU=A10G LA_MODAL_MAX_INPUTS=4 modal deploy modal_app/model_server.py
+```
+
+**Measured 2026-07-26, `LA_MODAL_MAX_INPUTS=4` vs. the no-`@modal.concurrent`
+baseline, same `dense_apples.jpg`/24-tile test, `LA_TILE_CONCURRENCY=8`
+throughout:**
+
+| Config | Containers used | First burst (cold) | Warm repeat |
+|---|---|---|---|
+| No `@modal.concurrent` (1 container/request) | 8 | 19.1s | 9.5s |
+| `@modal.concurrent(max_inputs=4)` | **4** | **32.3s (slower)** | **7.7s (comparable/better)** |
+
+Real docker-compose `/detect` calls confirm the same pattern: 30.0s cold, 6.86s
+warm, both against 4 containers (`modal container list` verified).
+
+**The actual trade-off**: packing 2 requests onto one container doesn't make
+the GPU itself do 2x the compute at once -- it's still one card, so concurrent
+`generate()` calls contend for the same compute during a cold burst, making
+the *first* hit slower (19.1s → 32.3s). Once containers are warm, that
+contention cost is already paid and the halved container count doesn't cost
+extra wall-clock time (7.7s vs 9.5s), while using half the GPU resources /
+avoiding half the redundant weight loads. For an occasional-visitor demo
+(mostly cold hits), the plain per-request-container approach gives a better
+first impression; for sustained/bursty traffic, `@modal.concurrent` is the
+better trade. **Currently deployed with `LA_MODAL_MAX_INPUTS=4`** (chosen
+deliberately over the faster-first-hit no-concurrency option) with
+`LA_TILE_CONCURRENCY=8` still set client-side in `.env` — tune either one
+down if first-burst latency matters more than the resource savings, following
+the same measure-first approach as above (`modal container list` during a
+real burst, not assumption).
+
+`target_inputs` is now set equal to `MAX_INPUTS` (was `MAX_INPUTS // 2`) --
+autoscaler packs each container all the way to the hard cap before opening
+another, rather than leaving headroom. Re-measured with `target_inputs=max_inputs=4`:
+the same 8-concurrent-tile burst now lands on just **2** containers (down from
+4), cold wall-clock ~33.2s (roughly the same as the `target=2` cold number,
+~32.3s -- packing harder didn't cost extra latency here since the GPU was
+already the bottleneck, not container count). Fewer containers = less
+redundant weight-loading, so this is a strict improvement over the earlier
+`target=2` setting for this workload -- re-verify if `LA_TILE_CONCURRENCY` or
+`MAX_INPUTS` change materially, same `modal container list` method.
 
 ## Running locally via Docker
 
