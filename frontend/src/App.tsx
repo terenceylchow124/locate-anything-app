@@ -6,17 +6,42 @@ import { Sidebar } from "./components/Sidebar";
 import { useComparison } from "./hooks/useComparison";
 import { collectRows, downloadCSV, downloadJSON } from "./lib/export";
 import { colorForPrompt } from "./lib/palette";
-import { DEFAULT_SCENE, SCENES } from "./scenes";
+import { loadScenes, resolveDefaultScene } from "./scenes";
+import type { Scene } from "./types";
 
 function App() {
-  const [selectedSceneId, setSelectedSceneId] = useState(DEFAULT_SCENE.id);
-  const scene = SCENES.find((s) => s.id === selectedSceneId) ?? DEFAULT_SCENE;
+  // Loaded at runtime from /scenes.json (see scenes.ts), not bundled at
+  // build time -- null while that fetch is in flight, so nothing below can
+  // assume a scene is selected yet.
+  const [scenes, setScenes] = useState<Scene[] | null>(null);
+  const [scenesError, setScenesError] = useState<string | null>(null);
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
 
-  const [imageUrl, setImageUrl] = useState(scene.default_image);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const objectUrlRef = useRef<string | null>(null);
 
   const [overlay, setOverlay] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadScenes()
+      .then((loaded) => {
+        if (cancelled) return;
+        const defaultScene = resolveDefaultScene(loaded);
+        setScenes(loaded);
+        setSelectedSceneId(defaultScene.id);
+        setImageUrl(defaultScene.default_image);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setScenesError(err instanceof Error ? err.message : "failed to load scenes");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -24,8 +49,12 @@ function App() {
     };
   }, []);
 
+  const scene = scenes?.find((s) => s.id === selectedSceneId) ?? scenes?.[0] ?? null;
+
   async function resolveImageBlob(): Promise<Blob> {
-    return uploadedFile ?? (await (await fetch(imageUrl)).blob());
+    if (uploadedFile) return uploadedFile;
+    if (!imageUrl) throw new Error("no image selected yet");
+    return await (await fetch(imageUrl)).blob();
   }
 
   const comparison = useComparison(resolveImageBlob, false);
@@ -37,7 +66,7 @@ function App() {
   const started = busy || hasResults;
 
   function handleSceneSelect(id: string) {
-    const nextScene = SCENES.find((s) => s.id === id);
+    const nextScene = scenes?.find((s) => s.id === id);
     if (!nextScene) return;
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
@@ -73,10 +102,21 @@ function App() {
 
   const exportDisabled = collectRows(prompts, comparison.results).length === 0;
 
+  if (scenesError) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center text-danger">
+        Failed to load scenes: {scenesError}
+      </div>
+    );
+  }
+  if (!scenes || !scene || !selectedSceneId || !imageUrl) {
+    return <div className="flex h-screen w-full items-center justify-center text-text">Loading…</div>;
+  }
+
   return (
     <div className="flex h-screen w-full overflow-hidden">
       <Sidebar
-        scenes={SCENES}
+        scenes={scenes}
         selectedSceneId={selectedSceneId}
         onSelectScene={handleSceneSelect}
         onUpload={handleFileUpload}

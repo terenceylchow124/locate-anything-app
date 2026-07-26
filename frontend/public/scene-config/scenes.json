@@ -20,7 +20,7 @@
     "display_name": "Orchard / crops",
     "category": "agriculture",
     "default_image": "/scenes/dense_apples.jpg",
-    "default_prompts": ["apple"],
+    "default_prompts": ["apple", "orange", "seed", "leaf"],
     "expected_count_range": [10, 18]
   },
   {
