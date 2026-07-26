@@ -54,13 +54,13 @@ GPU_TYPE = os.environ.get("LA_MODAL_GPU", "A10G")
 # Max concurrent /detect inputs one container will accept before Modal spins
 # up another container -- also a deploy-time-only value, same as GPU_TYPE
 # (read locally by `modal deploy`, not by the running container). See
-# CLAUDE.md's concurrency benchmark for the cold-start-vs-warm-throughput
+# DEPLOYMENT.md's concurrency section for the cold-start-vs-warm-throughput
 # trade-off this trades off.
 MAX_INPUTS = int(os.environ.get("LA_MODAL_MAX_INPUTS", "4"))
 # Equal to MAX_INPUTS -- autoscaler packs each container up to the hard cap
 # before opening a new one, rather than leaving headroom for burst (see
-# CLAUDE.md: measured this trades a bit more per-container GPU contention for
-# fewer containers/less redundant weight-loading).
+# DEPLOYMENT.md: measured this trades a bit more per-container GPU contention
+# for fewer containers/less redundant weight-loading).
 TARGET_INPUTS = MAX_INPUTS
 
 app = modal.App("locate-anything")
@@ -112,13 +112,14 @@ hf_cache = modal.Volume.from_name("la-hf-cache", create_if_missing=True)
     # Keep the container (and loaded weights) warm for 60s after the last
     # request before scaling to zero -- still covers back-to-back tile calls
     # for one image (each takes ~2s once warm), while capping idle-GPU spend
-    # at ~$0.02/request-burst instead of ~$0.09 (see CLAUDE.md's cost notes).
+    # at ~$0.02/request-burst instead of ~$0.09 (see DEPLOYMENT.md's cost
+    # control notes).
     scaledown_window=60,
 )
 # Lets one container handle multiple concurrent /detect calls instead of
 # Modal spinning up a separate container (and paying its own cold start +
-# duplicate ~6GB weight load) per concurrent request -- see CLAUDE.md's
-# concurrency benchmark for why LA_TILE_CONCURRENCY>1 on the backend side was
+# duplicate ~6GB weight load) per concurrent request -- see DEPLOYMENT.md's
+# concurrency section for why LA_TILE_CONCURRENCY>1 on the backend side was
 # previously turning into N separate containers. GPU compute itself still
 # serializes on the one card either way; this trades that same GPU-bound
 # serialization for skipping the redundant load/cold-start cost. Conservative

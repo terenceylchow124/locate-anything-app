@@ -54,7 +54,7 @@ export LA_MODAL_URL=<modal endpoint URL>
 export LA_MODAL_TOKEN=<shared bearer token>
 ```
 
-See `CLAUDE.md`'s "Deploying modal_app" section for how to deploy `modal_app/model_server.py` and provision the required secrets. All three backends are interchangeable from the frontend's point of view — same `/detect` contract either way.
+See `DEPLOYMENT.md`'s "Deploying modal_app/model_server.py" section for how to deploy it and provision the required secrets. All three backends are interchangeable from the frontend's point of view — same `/detect` contract either way.
 
 ## Development environment
 

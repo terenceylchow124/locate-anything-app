@@ -70,7 +70,7 @@ LA_MODAL_TOKEN = os.environ.get("LA_MODAL_TOKEN", "")
 # clients (Triton serves concurrent requests; Modal autoscales additional
 # GPU containers per concurrent request), so concurrency there mostly trades
 # wall-clock time for the same total GPU-seconds, not more total cost -- see
-# CLAUDE.md's concurrency benchmark.
+# DEPLOYMENT.md's concurrency section.
 LA_TILE_CONCURRENCY = int(os.environ.get("LA_TILE_CONCURRENCY", "1"))
 if LA_INFERENCE_BACKEND == "local" and LA_TILE_CONCURRENCY > 1:
     raise RuntimeError(

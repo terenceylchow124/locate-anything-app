@@ -8,7 +8,7 @@ services:
     environment:
       # "local" (default) uses the CPU engine below, unchanged; "triton"
       # talks to a remote Triton Inference Server on a GPU box; "modal" talks
-      # to a Modal-hosted GPU deployment (see CLAUDE.md's "Deploying modal_app").
+      # to a Modal-hosted GPU deployment (see DEPLOYMENT.md's "Deploying modal_app/model_server.py").
       # Set these in a .env file (see .env.example) or the shell before
       # `docker compose up` -- unset, behavior is identical to before this existed.
       - LA_INFERENCE_BACKEND=${LA_INFERENCE_BACKEND:-local}
