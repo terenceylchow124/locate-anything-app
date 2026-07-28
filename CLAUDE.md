@@ -8,7 +8,9 @@ Agent-facing reference for this repo. See also `README.md` (user-facing quicksta
 frontend (React/Vite SPA, :5173 in docker)
       │  POST /detect (multipart: file, prompt, mode)
       ▼
-backend (FastAPI, :8000 in docker) -- backend/app.py
+backend (FastAPI) -- backend/app.py
+      │  Modal-hosted (modal_app/backend_server.py, see DEPLOYMENT.md) by
+      │  default now; also runnable in docker (:8000, see below) or natively.
       │  tiles the image (tiling.py), runs each tile through the
       │  configured InferenceEngine, merges results by IoU
       ▼
@@ -52,18 +54,23 @@ Frontend build-time vars (`VITE_*`, baked in by `frontend/Dockerfile`, need `doc
 
 ## Running locally via Docker
 
+`docker-compose.yml` now runs **frontend only** — backend + inference both run on Modal (`modal_app/backend_server.py`, `modal_app/model_server.py`; see `DEPLOYMENT.md`). `VITE_API_BASE_URL` defaults to the deployed backend's Modal URL, baked in at frontend build time, so the browser calls it directly (absolute, cross-origin — `backend/app.py`'s CORS is wide open):
+
 ```sh
-git submodule update --init --recursive   # once, if cloned fresh
 docker compose up --build
 ```
 
-Frontend: http://localhost:5173 — backend: http://localhost:8000 (`/docs` for the OpenAPI UI). The frontend's nginx stage reverse-proxies relative `/detect` calls to the backend container, so no `VITE_API_BASE_URL` override is needed for this setup.
+Frontend: http://localhost:5173. Override `VITE_API_BASE_URL` (in `.env`, see `.env.example`) to point at a different backend, e.g. a local one run natively (see README's "Run the backend + frontend natively").
 
-`backend/Dockerfile` compiles `locate-anything.cpp` from source regardless of which `LA_INFERENCE_BACKEND` is active (one Dockerfile for all three backends, simpler than three) — wasteful build time if you're only ever using `triton`/`modal`, but functionally harmless.
+**After any frontend code change** (`.ts`/`.tsx`, not `scenes.json`/images, and not `VITE_*` var changes — those need a rebuild either way): `docker compose up -d --build` — `down` + `up -d` alone reuses the existing image and won't pick up source changes.
 
-**After any frontend code change** (`.ts`/`.tsx`, not `scenes.json`/images): `docker compose up -d --build frontend` — `down` + `up -d` alone reuses the existing image and won't pick up source changes.
+The old full local stack (`docker compose` running the CPU/Triton backend too) still exists as `docker-compose.triton.yml` (self-hosted Triton) or by running `backend/` natively (`local` engine, see README) alongside this frontend with `VITE_API_BASE_URL` pointed at it.
 
 ## Testing
+
+Backend tests live in `backend/tests/` (`conftest.py` there puts `backend/` on
+`sys.path` so they can still `import app`/`from queueing import ...` etc.
+directly); fixtures are `backend/tests/fixtures/`.
 
 ```sh
 # Backend (from backend/, conda env `locateanything` -- see README's

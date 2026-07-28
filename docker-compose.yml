@@ -1,44 +1,24 @@
 services:
-  backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      # "local" (default) uses the CPU engine below, unchanged; "triton"
-      # talks to a remote Triton Inference Server on a GPU box; "modal" talks
-      # to a Modal-hosted GPU deployment (see DEPLOYMENT.md's "Deploying modal_app/model_server.py").
-      # Set these in a .env file (see .env.example) or the shell before
-      # `docker compose up` -- unset, behavior is identical to before this existed.
-      - LA_INFERENCE_BACKEND=${LA_INFERENCE_BACKEND:-local}
-      - LA_TRITON_URL=${LA_TRITON_URL:-localhost:8000}
-      - LA_TRITON_MODEL_NAME=${LA_TRITON_MODEL_NAME:-locate_anything}
-      - LA_MODAL_URL=${LA_MODAL_URL:-}
-      - LA_MODAL_TOKEN=${LA_MODAL_TOKEN:-}
-      - LA_TILE_CONCURRENCY=${LA_TILE_CONCURRENCY:-1}
-      - LA_REQUEST_CONCURRENCY=${LA_REQUEST_CONCURRENCY:-1}
-    volumes:
-      # Model weights are not baked into the image (~6.3GB GGUF) -- mount the
-      # host's already-downloaded models/ dir read-only. See README's "Get
-      # the model" step; it must be run before `docker compose up`. Only
-      # relevant for LA_INFERENCE_BACKEND=local -- harmless if unused.
-      - ./locate-anything.cpp/models:/app/locate-anything.cpp/models:ro
-
+  # Frontend only -- backend + inference both run on Modal now (see
+  # DEPLOYMENT.md's "Deploying modal_app/backend_server.py" /
+  # "Deploying modal_app/model_server.py"), so there's no local backend
+  # container left to run. VITE_API_BASE_URL below points the built SPA at
+  # the deployed backend's Modal URL directly (absolute, cross-origin --
+  # backend/app.py already has CORS wide open). The self-hosted full-stack
+  # option (local CPU or Triton backend, own frontend) still exists as
+  # docker-compose.triton.yml.
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
         # Both are baked in at build time (Vite env vars aren't readable at
-        # container runtime) -- rebuild (`docker compose up --build frontend`)
-        # for a change to either to take effect. See .env.example.
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        # container runtime) -- rebuild (`docker compose up --build`) for a
+        # change to either to take effect. See .env.example.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://terenceylchow--locate-anything-backend-fastapi-app.modal.run}
         VITE_DEFAULT_SCENE_ID: ${VITE_DEFAULT_SCENE_ID:-}
     ports:
       - "5173:80"
-    depends_on:
-      - backend
     volumes:
       # Mounted as a DIRECTORY, not individual files -- a single-file bind
       # mount breaks as soon as the file is saved via write-new-file-then-

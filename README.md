@@ -12,26 +12,21 @@ Core demo complete: tile pipeline, 5-scene registry, license disclosure UI, side
 
 ```sh
 git submodule update --init --recursive   # if you cloned this repo fresh
-
-# one-time: download the model weights to locate-anything.cpp/models/ (see
-# "Get the model" below) -- they're volume-mounted, not baked into the image
-
 docker compose up --build
 ```
 
 - Frontend: http://localhost:5173
-- Backend: http://localhost:8000 (`/docs` for the OpenAPI UI)
 
-CPU-only end to end — no GPU device reservation, no mock mode. A real detection takes **~65-80s per 512×512 tile** (see `docs/adr/0003`), so most scene images (6-30 tiles) take anywhere from a few minutes to 30-55+ minutes for one `/detect` call; this is a known, inherent characteristic of running a 3B-parameter VLM on CPU, not a bug.
+`docker-compose.yml` now runs the **frontend only** — it talks to a backend + GPU model already deployed on Modal (`modal_app/backend_server.py` + `modal_app/model_server.py`; see `DEPLOYMENT.md`), no local model weights or GPU needed. A real detection takes a few seconds per tile once warm (cold Modal containers add ~20-50s on the first request after idling — see `DEPLOYMENT.md`'s concurrency/cost notes).
 
-The backend image compiles `locate-anything.cpp` from source at build time with `GGML_NATIVE=ON` (the default), which optimizes for the CPU of the machine doing the build. That's correct for this one-command flow since build and run happen on the same host; if you build on one machine and move the image to run on a different CPU, pass `--build-arg GGML_NATIVE=OFF` or the binary may crash with an illegal-instruction error.
+**Fully local, CPU-only, no Modal account needed:** run the backend natively instead (see "Development environment (without Docker)" below) with `LA_INFERENCE_BACKEND=local` (its default), then point this same frontend at it: `VITE_API_BASE_URL=http://localhost:8000 docker compose up --build`. This is slower — a real detection takes **~65-80s per 512×512 tile** (see `docs/adr/0003`), so most scene images (6-30 tiles) take anywhere from a few minutes to 30-55+ minutes for one `/detect` call; this is a known, inherent characteristic of running a 3B-parameter VLM on CPU, not a bug. `docker-compose.triton.yml` is a similar one-command option for a self-hosted GPU (Triton) instead.
 
 ## Architecture
 
 - **Inference engine:** [`mudler/locate-anything.cpp`](https://github.com/mudler/locate-anything.cpp) (vendored as a git submodule at `locate-anything.cpp/`) — a ggml/C++ port of LocateAnything-3B that runs real, non-mocked inference **on CPU**, validated box-identical to the official PyTorch model at `q8_0` quantization. No GPU is required or used anywhere in this project.
 - **Backend:** a thin FastAPI service wrapping the engine behind a single `POST /detect` endpoint. Dense images are split into overlapping tiles, run through a persistent in-process engine (`backend/la_capi.py`, via `liblocate_anything`'s C API), and merged back by IoU (`backend/tiling.py`).
 - **Frontend:** React + Vite + TypeScript (`frontend/`) — pick a scene or upload an image, type or click a prompt, see boxes + count, compare up to 3 prompts side by side.
-- **Packaging:** Docker Compose, two images we author ourselves (`backend/Dockerfile`, `frontend/Dockerfile`) — see Quickstart above.
+- **Packaging:** Docker Compose for the frontend (`frontend/Dockerfile`, `docker-compose.yml` — see Quickstart above). `backend/Dockerfile` still builds a standalone local-CPU backend image for the fully-local option above (not wired into any compose file currently — run it directly with `docker build`/`docker run`, or run the backend natively instead); `backend/Dockerfile.triton` is the separate image `docker-compose.triton.yml` uses for the self-hosted-GPU option.
 
 We deliberately dropped an earlier plan to reuse a third-party prebuilt Docker app (`gammahazard/locate-anything`) — it's CUDA-only with no CPU path and offered no way to customize sample scenes or license text. Both backend and frontend here are ours.
 
