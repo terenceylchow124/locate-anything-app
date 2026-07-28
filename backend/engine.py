@@ -3,8 +3,9 @@
 `app.py`'s `run_detection` calls exactly one method on whichever engine is
 configured (`LA_INFERENCE_BACKEND`) -- this Protocol pins that contract so
 neither `app.py` nor a new engine implementation needs to depend on the
-other's concrete class. Both `LocateAnythingEngine` (la_capi.py, local CPU)
-and `TritonEngine` (triton_engine.py, remote GPU) satisfy it structurally.
+other's concrete class. `LocateAnythingEngine` (la_capi.py, local CPU),
+`TritonEngine` (triton_engine.py, remote GPU), and `ModalEngine`
+(modal_engine.py, Modal-hosted GPU) all satisfy it structurally.
 """
 
 from __future__ import annotations

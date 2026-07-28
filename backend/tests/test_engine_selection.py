@@ -68,7 +68,7 @@ def test_local_backend_rejects_tile_concurrency_above_one():
     # rather than silently letting LA_TILE_CONCURRENCY>1 corrupt local-mode
     # inference. Runs app.py as a subprocess (not monkeypatch) since the
     # check runs at module import time, before any patching could apply.
-    backend_dir = Path(__file__).resolve().parent
+    backend_dir = Path(__file__).resolve().parent.parent
     result = subprocess.run(
         [sys.executable, "-c", "import app"],
         cwd=backend_dir,
@@ -77,13 +77,16 @@ def test_local_backend_rejects_tile_concurrency_above_one():
         text=True,
     )
     assert result.returncode != 0
-    assert "LA_TILE_CONCURRENCY > 1 is not supported with LA_INFERENCE_BACKEND=local" in result.stderr
+    assert (
+        "LA_TILE_CONCURRENCY > 1 is not supported with LA_INFERENCE_BACKEND=local"
+        in result.stderr
+    )
 
 
 def test_local_backend_rejects_request_concurrency_above_one():
     # Same reasoning as the tile-concurrency guard above, for the other
     # concurrency axis (whole /detect requests, see LA_REQUEST_CONCURRENCY).
-    backend_dir = Path(__file__).resolve().parent
+    backend_dir = Path(__file__).resolve().parent.parent
     result = subprocess.run(
         [sys.executable, "-c", "import app"],
         cwd=backend_dir,

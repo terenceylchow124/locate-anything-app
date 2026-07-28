@@ -1,5 +1,5 @@
 import { Download } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ComparisonPanelState } from "../types";
 import { downloadAnnotatedImage } from "../lib/annotatedImage";
 import { ImageStage } from "./ImageStage";
@@ -63,7 +63,7 @@ function ResultCard({
 }) {
   const [threshold, setThreshold] = useState(0);
   const all = state.status === "done" ? state.result.detections : [];
-  const shown = useMemo(() => all.filter((d) => (d.score ?? 0) >= threshold), [all, threshold]);
+  const shown = all.filter((d) => (d.score ?? 0) >= threshold);
   const done = state.status === "done";
 
   return (

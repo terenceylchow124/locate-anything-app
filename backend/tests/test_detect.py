@@ -16,9 +16,9 @@ from app import LA_LIB_PATH, LA_MODEL_PATH, app
 from fastapi.testclient import TestClient
 from PIL import Image
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SAMPLE_IMAGE = REPO_ROOT / "locate-anything.cpp" / "benchmarks" / "media" / "bus_in.png"
-FIXTURES_DIR = REPO_ROOT / "backend" / "tests" / "fixtures"
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 # One entry per scene with a usable expected_count_range (ticket #05's scene
 # registry) -- night-market crowd is excluded, its count isn't verifiable by
