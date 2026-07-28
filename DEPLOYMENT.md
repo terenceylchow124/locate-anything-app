@@ -98,13 +98,34 @@ Packing more requests per container doesn't parallelize GPU compute (one card ei
 
 **`LA_REQUEST_CONCURRENCY`, verified 2026-07-26** (single warm 512×512 tile, 3 different prompts): 2.7s total wall-clock vs. each individual call's own 1.6–2.7s — genuinely overlapping, not summing. Concurrency cap itself confirmed: 6 concurrent requests against `LA_REQUEST_CONCURRENCY=5` showed 5 at `queue_wait_ms: 0` and the 6th at `queue_wait_ms: 1900`.
 
-## Deploying to Vercel (planned, not done — restructure needed first)
+## Deploying `modal_app/backend_server.py` (backend/app.py, on Modal)
 
-Near-term plan: **frontend → Vercel, backend + inference → Modal** (both, not just the GPU model server as today).
+**Done** — `backend/app.py` (the tiling/merge orchestrator, not the GPU model) now also runs on Modal, wrapped by `modal_app/backend_server.py` as a CPU-only `@modal.asgi_app()`. No changes needed to `backend/app.py` itself; the wrapper adds `backend/`'s source (`add_local_dir`, minus `tests/`) into a plain `debian_slim` image built from `backend/requirements.txt`'s packages and reads the same env vars `backend/app.py` already expects, via a Modal secret instead of `.env`.
 
-**Frontend**: straightforward — static Vite SPA, Vercel serves it well.
+One secret, created once per account:
 
-**Backend: do not put it on a plain Vercel serverless function.** Vercel has a hard execution-time ceiling (~10s Hobby, ~60s Pro default, up to 800s on Pro with Fluid Compute). `/detect` tiles a dense image into up to ~30 tiles and — depending on `LA_REQUEST_CONCURRENCY`/`LA_TILE_CONCURRENCY` — a real request plus a cold GPU container behind it can run well past Vercel's ceiling. Instead: deploy `backend/app.py` as its own Modal app (a CPU-only `@app.function` wrapping the same FastAPI app via `@modal.asgi_app()` — no code changes needed) or a host built for long requests (Fly.io, Render). Keeps everything on one Modal account/billing surface instead of splitting across three platforms.
+```sh
+modal secret create la-backend-config \
+    LA_INFERENCE_BACKEND=modal \
+    LA_MODAL_URL=<modal_app/model_server.py's printed endpoint URL> \
+    LA_MODAL_TOKEN=<the la-modal-shared-token secret's value> \
+    LA_TILE_CONCURRENCY=8 \
+    LA_REQUEST_CONCURRENCY=5
+```
+
+```sh
+modal deploy modal_app/backend_server.py
+```
+
+Prints a web endpoint URL ending in `/detect` — point the frontend's `VITE_API_BASE_URL` at its base (everything before `/detect`), same shape as the local `docker compose` setup.
+
+Deliberately **doesn't** support `LA_INFERENCE_BACKEND=local` — the compiled `.so` + GGUF weights aren't part of this image, and running the CPU engine here would defeat the point of a GPU-hosted model. Verified live 2026-07-28: a real `/detect` call against a 512×512 crop returned two boxes with plausible scores (0.55, 0.60), `52.8s` execution — a cold hit on both this container *and* the GPU model server behind it (each has its own independent cold start).
+
+## Deploying to Vercel (frontend only — planned, not done)
+
+Remaining piece of the restructure: **frontend → Vercel** (backend + inference are both on Modal now, per above).
+
+Vercel serves the static Vite SPA well, no special handling needed — a plain `vercel.json` pointing at `frontend/`'s build output, with `VITE_API_BASE_URL` set to the deployed backend's Modal URL as a Vercel env var (baked in at Vercel's build time, same as it is for the `docker compose` frontend build today).
 
 **Access lock** once this has a public URL (keep random traffic from burning Modal credits) — two layers, neither is real user authentication:
 

@@ -9,10 +9,10 @@ Outstanding work, agent-facing. See `CLAUDE.md` (architecture/settings) and `DEP
 
 ## Deployment restructure (see `DEPLOYMENT.md`)
 
-- [ ] Deploy `backend/app.py` as its own Modal app (`@modal.asgi_app()` wrapping the existing FastAPI app, no code changes expected) or an equivalent long-request-friendly host (Fly.io/Render) — currently it only runs locally via `docker compose`.
-- [ ] Deploy the frontend to Vercel.
-- [ ] Add the access lock before either is publicly reachable: Vercel Deployment Protection (Pro/Team) + an `LA_APP_ACCESS_TOKEN` shared-secret bearer check on the backend (frontend prompts once, stores in `localStorage`). Neither exists yet.
-- [ ] Re-run the concurrency/GPU benchmarks in `DEPLOYMENT.md` once the backend is off `docker compose` and actually reachable over the internet — current numbers are all from a local backend calling a public Modal endpoint, not a fully deployed stack.
+- [x] Deploy `backend/app.py` as its own Modal app (`modal_app/backend_server.py`, `@modal.asgi_app()` wrapping the existing FastAPI app, no code changes to `app.py` itself) — done and verified live 2026-07-28 (real `/detect` call end-to-end through both Modal apps). Frontend isn't pointed at it yet (`VITE_API_BASE_URL` still unset locally, so `docker compose`'s frontend still talks to the local `docker compose` backend, not this one).
+- [ ] Deploy the frontend to Vercel, with `VITE_API_BASE_URL` set to `modal_app/backend_server.py`'s printed endpoint.
+- [ ] Add the access lock before either is publicly reachable: Vercel Deployment Protection (Pro/Team) + an `LA_APP_ACCESS_TOKEN` shared-secret bearer check on the backend (frontend prompts once, stores in `localStorage`). Neither exists yet — the backend Modal deployment above has no access control beyond CORS being wide open, same as the local `docker compose` setup; fine for now since the URL isn't shared anywhere yet, but must be added before that changes.
+- [ ] Re-run the concurrency/GPU benchmarks in `DEPLOYMENT.md` now that the backend is reachable over the internet independent of `docker compose` — current numbers are all from a local backend calling a public Modal endpoint, not this fully-Modal-hosted backend+inference pair.
 
 ## Not implemented (optional/future)
 
