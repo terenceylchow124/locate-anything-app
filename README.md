@@ -2,6 +2,8 @@
 
 A portfolio project built around [NVIDIA LocateAnything-3B](https://huggingface.co/nvidia/LocateAnything-3B), an open-vocabulary object detection / visual-grounding VLM. The goal is an interactive demo that proves the model's core differentiator over YOLO-style detectors: swap the text prompt, swap the detection target — no retraining, no per-class model.
 
+![Demo](docs/demo.gif)
+
 See `docs/locateanything-demo-scenarios.md` for the full scenario/positioning notes and `docs/spec-locateanything-demo.md` for the current spec (problem statement, user stories, implementation/testing decisions).
 
 ## Status
